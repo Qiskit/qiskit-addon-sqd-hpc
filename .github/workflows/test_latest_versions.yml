@@ -76,13 +76,13 @@ jobs:
         run: >-
           cmake -S . -B build
           -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
-          ${{ matrix.compiler != 'MSVC' && '-G Ninja' }}
+          ${{ matrix.compiler != 'MSVC' && '-G Ninja' || '' }}
           ${{ matrix.compiler && format('-DCMAKE_CXX_COMPILER={0}', matrix.compiler) }}
           ${{ matrix.cxx_standard && format('-DCMAKE_CXX_STANDARD={0}', matrix.cxx_standard) }}
       - name: CMake Build
         run: >-
           cmake --build build -j4
-          ${{ matrix.compiler == 'MSVC' && '--config Release' }}
+          ${{ matrix.compiler == 'MSVC' && '--config Release' || '' }}
       - name: Copy build/Release/*.exe to build/ (MSVC)
         if: matrix.compiler == 'MSVC'
         run: |
