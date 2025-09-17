@@ -47,7 +47,7 @@ jobs:
           ./build/sqd_tests
       - name: Convert to json for coveralls
         if: always()
-        run: gcovr --coveralls coverage.json --root .
+        run: gcovr --coveralls coveralls.json --root .
       - name: Upload report to Coveralls
         if: always()
         uses: coverallsapp/github-action@v2
