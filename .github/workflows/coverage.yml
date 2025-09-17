@@ -38,7 +38,7 @@ jobs:
           pip install gcovr
       - name: Configure CMake
         run: >-
-          cmake -S . -B build -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON DCMAKE_CXX_FLAGS="--coverage" -G Ninja
+          cmake -S . -B build -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_CXX_FLAGS="--coverage" -G Ninja
       - name: CMake Build
         run: >-
           cmake --build build -j4
