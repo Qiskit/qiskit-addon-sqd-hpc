@@ -44,7 +44,6 @@ jobs:
           # Windows
           - os: windows-latest
             compiler: MSVC
-            exe_suffix: .exe
     steps:
       - uses: actions/checkout@v4
         with:
@@ -68,7 +67,7 @@ jobs:
           cp build/Release/*.exe build/
       - name: Run tests
         run: |
-          ./build/sqd_tests${{ matrix.exe_suffix }}
+          ./build/sqd_tests
       - name: Run benchmarks
         run: |
-          ./build/sqd_benchmarks${{ matrix.exe_suffix }}
+          ./build/sqd_benchmarks
