@@ -66,7 +66,9 @@ jobs:
           cmake -S . -B build -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
           cmake --build build -j4
       - name: Run tests
+        shell: bash
         run: |
+          ls build
           build/sqd_tests${{ matrix.exe_suffix }}
       - name: Run benchmarks
         run: |
