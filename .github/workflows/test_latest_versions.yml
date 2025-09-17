@@ -69,9 +69,11 @@ jobs:
         run: |
           cmake -S . -B build -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
           cmake --build build --config Release -j4
+          cp build/Release/*.exe build/
       - name: Run tests
         run: |
           ls build
+          ls build/Release
           ./build/sqd_tests${{ matrix.exe_suffix }}
       - name: Run benchmarks
         run: |
