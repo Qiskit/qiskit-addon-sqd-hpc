@@ -53,7 +53,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          cmake -S . -B build -G Ninja
+          cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
           cmake --build build -j4
       - name: Run tests
         shell: bash
