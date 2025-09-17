@@ -41,25 +41,33 @@ jobs:
           # macOS ARM
           - os: macos-latest
             compiler: clang++
+          # Windows
+          - os: windows-latest
+            compiler: MSVC
     steps:
       - uses: actions/checkout@v5
         with:
           submodules: true
-      - name: Install dependencies
+      - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y g++ clang cmake ninja-build
-      - name: Build
+      - name: Build (non-MSVC)
+        if: matrix.compiler != 'MSVC'
         shell: bash
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
           cmake --build build -j4
+      - name: Build (MSVC)
+        if: matrix.compiler == 'MSVC'
+        run: |
+          cmake -S . -B build -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+          cmake --build build --config Release -j4
+          cp build/Release/*.exe build/
       - name: Run tests
-        shell: bash
         run: |
           ./build/sqd_tests
       - name: Run benchmarks
-        shell: bash
         run: |
           ./build/sqd_benchmarks

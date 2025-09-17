@@ -28,7 +28,7 @@ void benchmark_configuration_recovery(ankerl::nanobench::Bench &bench)
 
     constexpr auto half_N = 40;
     constexpr auto N = 2 * half_N;
-    constexpr auto num_elec_a = 10;
+    constexpr auto num_elec_a = 10u;
 
     using Bitstring = std::bitset<N>;
 
