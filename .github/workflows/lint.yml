@@ -28,8 +28,8 @@ jobs:
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
           cat <<EOF | sudo tee -a /etc/apt/sources.list
-          deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-20 main
-          deb-src http://apt.llvm.org/jammy/ llvm-toolchain-jammy-20 main
+          deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main
+          deb-src http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main
           EOF
       - name: Install via apt-get
         run: |

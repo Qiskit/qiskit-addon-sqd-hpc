@@ -14,12 +14,12 @@ on:
 
 jobs:
   tests:
-    name: latest version tests (${{ matrix.os }}, ${{ matrix.python-version }})
+    name: latest version tests (${{ matrix.os }}, ${{ matrix.compiler }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
-      max-parallel: 4
       matrix:
+        fail-fast: false
         include:
           # Linux x86_64
           - os: ubuntu-22.04
