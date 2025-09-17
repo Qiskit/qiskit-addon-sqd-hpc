@@ -1,0 +1,57 @@
+name: Coverage
+
+on:
+  push:
+    branches:
+      - main
+      - 'stable/**'
+  pull_request:
+    branches:
+      - main
+      - 'stable/**'
+
+jobs:
+  coverage:
+    name: C++ coverage (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.13"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ clang cmake ninja-build
+      - name: Install tox
+        run: |
+          python -m pip install --upgrade pip
+          pip install gcovr
+      - name: Configure CMake
+        run: >-
+          cmake -S . -B build -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON DCMAKE_CXX_FLAGS="--coverage" -G Ninja
+      - name: CMake Build
+        run: >-
+          cmake --build build -j4
+      - name: Run tests
+        run: |
+          ./build/sqd_tests
+      - name: Convert to json for coveralls
+        if: always()
+        run: gcovr --coveralls coverage.json
+      - name: Upload report to Coveralls
+        if: always()
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: coveralls.json
+          format: json
