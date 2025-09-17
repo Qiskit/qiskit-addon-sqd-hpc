@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Install dependencies
+      - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -61,15 +61,12 @@ jobs:
           cmake --build build -j4
       - name: Build (Windows)
         if: runner.os == 'Windows'
-        shell: bash
         run: |
           cmake -S . -B build -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
           cmake --build build -j4
       - name: Run tests
-        shell: bash
         run: |
           ./build/sqd_tests
       - name: Run benchmarks
-        shell: bash
         run: |
           ./build/sqd_benchmarks
