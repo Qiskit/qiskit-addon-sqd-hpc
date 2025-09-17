@@ -18,8 +18,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
-        fail-fast: false
         include:
           # Linux x86_64
           - os: ubuntu-22.04
