@@ -14,7 +14,7 @@ on:
 
 jobs:
   tests:
-    name: latest version tests (${{ matrix.os }}, ${{ matrix.compiler }})
+    name: latest version tests (C++${{ matrix.standard }}, ${{ matrix.os }}, ${{ matrix.compiler }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
