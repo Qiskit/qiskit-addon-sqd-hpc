@@ -14,7 +14,7 @@ on:
 
 jobs:
   tests:
-    name: latest version tests (${{ matrix.os }}, ${{ matrix.compiler }})
+    name: latest version tests (C++${{ matrix.cxx_standard }}, ${{ matrix.os }}, ${{ matrix.compiler }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -24,12 +24,25 @@ jobs:
           # Linux x86_64
           - os: ubuntu-22.04
             compiler: g++
+            cxx_standard: 17
           - os: ubuntu-22.04
             compiler: clang++
           - os: ubuntu-latest
             compiler: g++
           - os: ubuntu-latest
+            compiler: g++
+            cxx_standard: 20
+          - os: ubuntu-latest
+            compiler: g++
+            cxx_standard: 23
+          - os: ubuntu-latest
             compiler: clang++
+          - os: ubuntu-latest
+            compiler: clang++
+            cxx_standard: 20
+          - os: ubuntu-latest
+            compiler: clang++
+            cxx_standard: 23
           # Linux ARM
           - os: ubuntu-22.04-arm
             compiler: g++
@@ -44,6 +57,12 @@ jobs:
           # Windows
           - os: windows-latest
             compiler: MSVC
+          - os: windows-latest
+            compiler: MSVC
+            cxx_standard: 20
+          - os: windows-latest
+            compiler: MSVC
+            cxx_standard: 23
     steps:
       - uses: actions/checkout@v5
         with:
@@ -57,13 +76,22 @@ jobs:
         if: matrix.compiler != 'MSVC'
         shell: bash
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+          cmake -S . -B build -G Ninja \
+              -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
+              ${{ matrix.compiler && format('-DCMAKE_CXX_COMPILER={0}', matrix.compiler) }} \
+              ${{ matrix.cxx_standard && format('-DCMAKE_CXX_STANDARD={0}', matrix.cxx_standard) }}
           cmake --build build -j4
       - name: Build (MSVC)
         if: matrix.compiler == 'MSVC'
+        shell: bash
         run: |
-          cmake -S . -B build -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+          cmake -S . -B build \
+              -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
+              ${{ matrix.cxx_standard && format('-DCMAKE_CXX_STANDARD={0}', matrix.cxx_standard) }}
           cmake --build build --config Release -j4
+      - name: Copy build/Release executatables to build/ (MSVC)
+        if: matrix.compiler == 'MSVC'
+        run: |
           cp build/Release/*.exe build/
       - name: Run tests
         run: |
