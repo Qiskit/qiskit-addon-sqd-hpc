@@ -67,7 +67,7 @@ jobs:
           cmake --build build -j4
       - name: Run tests
         run: |
-          ./build/sqd_tests${{ matrix.exe_suffix }}
+          build/sqd_tests${{ matrix.exe_suffix }}
       - name: Run benchmarks
         run: |
-          ./build/sqd_benchmarks${{ matrix.exe_suffix }}
+          build/sqd_benchmarks${{ matrix.exe_suffix }}
