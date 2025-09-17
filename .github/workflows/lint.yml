@@ -26,8 +26,8 @@ jobs:
       - name: Enable LLVM ppa
         shell: bash
         run: |
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-          cat <<EOF >>/etc/apt/sources.list
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          cat <<EOF | sudo tee -a /etc/apt/sources.list
           deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-20 main
           deb-src http://apt.llvm.org/jammy/ llvm-toolchain-jammy-20 main
           EOF
