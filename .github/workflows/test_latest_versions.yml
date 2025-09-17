@@ -45,6 +45,9 @@ jobs:
           - os: windows-latest
             compiler: MSVC
             exe_suffix: .exe
+          - os: windows-latest
+            compiler: g++
+            exe_suffix: .exe
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,17 +57,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y g++ clang cmake ninja-build
-      - name: Build (Linux/macOS)
-        if: runner.os != 'Windows'
+      - name: Build (non-MSVC)
+        if: matrix.compiler != 'MSVC'
         shell: bash
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
           cmake --build build -j4
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
+      - name: Build (MSVC)
+        if: matrix.compiler == 'MSVC'
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
-          cmake --build build -j4
+          cmake -S . -B build -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+          cmake --build build --config Release -j4
       - name: Run tests
         run: |
           ./build/sqd_tests${{ matrix.exe_suffix }}
