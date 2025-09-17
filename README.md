@@ -83,7 +83,7 @@ Each substantial improvement, breaking change, or deprecation will be documented
 
 The source code is available [on GitHub](https://github.com/Qiskit/qiskit-addon-sqd-hpc).
 
-The developer guide is located at [CONTRIBUTING.md]
+The developer guide is located at [CONTRIBUTING.md](https://github.com/Qiskit/qiskit-addon-sqd-hpc/blob/main/CONTRIBUTING.md)
 in the root of this project's repository.
 By participating, you are expected to uphold Qiskit's [code of conduct](https://github.com/Qiskit/qiskit/blob/main/CODE_OF_CONDUCT.md).
 
