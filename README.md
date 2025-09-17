@@ -7,7 +7,7 @@ This repository contains an HPC-ready implementation of the [Qiskit addon for Sa
 - Modern C++17 template library, compatible with standard (STL) interfaces.
 - Provides low-level functions for performing postselection, subsampling, and configuration recovery.
 - Able to integrate with the [sbd eigensolver](https://github.com/r-ccs-cms/sbd), which was developed at RIKEN to enable large-scale SQD calculations.  See the [Qiskit 2.2 C API demo repository], in which a single binary harnessing both OpenMP and MPI-level parallelism is compiled for an HPC cluster.
-- Cross-platform, tested on x86_64 and ARMv8.
+- Cross-architecture, tested on x86_64 and ARMv8.  Cross-platform, tested on Linux, macOS, and Windows.
 - Compile with exceptions enabled or disabled -- your choice.  [RTTI](https://en.wikipedia.org/wiki/Run-time_type_information) is optional, too.
 - Complete API documentation.
 - Fully tested, with a test suite based on [doctest](https://github.com/doctest/doctest).

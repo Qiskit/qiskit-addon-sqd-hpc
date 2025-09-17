@@ -62,6 +62,7 @@ jobs:
         shell: bash
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+          cat build/CMakeCache.txt
           cmake --build build -j4
       - name: Build (MSVC)
         if: matrix.compiler == 'MSVC'
@@ -70,6 +71,7 @@ jobs:
           cmake --build build --config Release -j4
       - name: Run tests
         run: |
+          ls build
           ./build/sqd_tests${{ matrix.exe_suffix }}
       - name: Run benchmarks
         run: |
