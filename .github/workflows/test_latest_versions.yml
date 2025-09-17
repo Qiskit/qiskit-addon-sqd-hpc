@@ -45,9 +45,6 @@ jobs:
           - os: windows-latest
             compiler: MSVC
             exe_suffix: .exe
-          - os: windows-latest
-            compiler: g++
-            exe_suffix: .exe
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,7 +59,6 @@ jobs:
         shell: bash
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
-          cat build/CMakeCache.txt
           cmake --build build -j4
       - name: Build (MSVC)
         if: matrix.compiler == 'MSVC'
@@ -72,8 +68,6 @@ jobs:
           cp build/Release/*.exe build/
       - name: Run tests
         run: |
-          ls build
-          ls build/Release
           ./build/sqd_tests${{ matrix.exe_suffix }}
       - name: Run benchmarks
         run: |
