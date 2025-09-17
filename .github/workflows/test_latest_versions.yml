@@ -54,7 +54,7 @@ jobs:
         shell: bash
         run: |
           cmake -S . -B build -G Ninja
-          ninja -C build
+          cmake --build build -j4
       - name: Run tests
         shell: bash
         run: |
