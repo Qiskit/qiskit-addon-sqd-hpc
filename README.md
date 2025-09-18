@@ -1,7 +1,7 @@
 [![C++17](https://img.shields.io/badge/C++17%20or%20later-%2300599C.svg?logo=c%2B%2B&logoColor=white)](#)
-![Compilers](https://img.shields.io/badge/%F0%9F%94%A8%20Compilers-GCC%20%7C%20Clang%20%7C%20MSVC-informational)
-![Architectures](https://img.shields.io/badge/%E2%9A%99%EF%B8%8F%20Platforms-x86__64%20%7C%20ARMv8-informational)
-![Operating systems](https://img.shields.io/badge/%F0%9F%92%BB%20Operating_systems-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![Supported compilers](https://img.shields.io/badge/%F0%9F%94%A8%20Supported_compilers-GCC%20%7C%20Clang%20%7C%20MSVC-informational)
+![Supported architectures](https://img.shields.io/badge/%E2%9A%99%EF%B8%8F%20Supported_architectures-x86__64%20%7C%20ARMv8-informational)
+![Supported operating systems](https://img.shields.io/badge/%F0%9F%92%BB%20Supported_operating_systems-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 <br/>
 [![Docs (dev)](https://img.shields.io/badge/%F0%9F%93%84%20Docs-stable-blue.svg)](https://qiskit.github.io/qiskit-addon-sqd-hpc/)
 [![License](https://img.shields.io/github/license/Qiskit/qiskit-addon-sqd-hpc?label=License)](LICENSE.txt)
