@@ -1,3 +1,10 @@
+![Platform](https://img.shields.io/badge/%F0%9F%92%BB%20Platform-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+[![C++17](https://img.shields.io/badge/C++17-%2300599C.svg?logo=c%2B%2B&logoColor=white)](#)
+[![Docs (dev)](https://img.shields.io/badge/%F0%9F%93%84%20Docs-stable-blue.svg)](https://qiskit.github.io/qiskit-addon-sqd-hpc/)
+[![License](https://img.shields.io/github/license/Qiskit/qiskit-addon-sqd-hpc?label=License)](LICENSE.txt)
+[![Tests](https://github.com/Qiskit/qiskit-addon-sqd-hpc/actions/workflows/test_latest_versions.yml/badge.svg)](https://github.com/Qiskit/qiskit-addon-sqd-hpc/actions/workflows/test_latest_versions.yml)
+[![Coverage](https://coveralls.io/repos/github/Qiskit/qiskit-addon-sqd-hpc/badge.svg?branch=main)](https://coveralls.io/github/Qiskit/qiskit-addon-sqd-hpc?branch=main)
+
 # qiskit-addon-sqd-hpc
 
 This repository contains an HPC-ready implementation of the [Qiskit addon for Sample-based Quantum Diagonalization (SQD)](https://github.com/Qiskit/qiskit-addon-sqd).
