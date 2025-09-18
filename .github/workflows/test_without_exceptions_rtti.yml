@@ -14,7 +14,7 @@ on:
 
 jobs:
   tests:
-    name: latest version tests (C++${{ matrix.cxx_standard }}, ${{ matrix.os }}, ${{ matrix.compiler }})
+    name: without exceptions or RTTI (C++${{ matrix.cxx_standard }}, ${{ matrix.os }}, ${{ matrix.compiler }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -43,7 +43,7 @@ jobs:
           ${{ matrix.cxx_standard && format('-DCMAKE_CXX_STANDARD={0}', matrix.cxx_standard) }}
       - name: CMake Build
         run: >-
-          cmake --build build -j4
+          cmake --build build -j4 --target sqd_tests
           ${{ matrix.compiler == 'MSVC' && '--config Release' || '' }}
       - name: Copy build/Release/*.exe to build/ (MSVC)
         if: matrix.compiler == 'MSVC'
@@ -52,6 +52,3 @@ jobs:
       - name: Run tests
         run: |
           ./build/sqd_tests
-      - name: Run benchmarks
-        run: |
-          ./build/sqd_benchmarks
