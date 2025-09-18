@@ -1,0 +1,68 @@
+name: Development version tests
+
+on:
+  push:
+    branches:
+      - main
+      - 'stable/**'
+  pull_request:
+    branches:
+      - main
+      - 'stable/**'
+  schedule:
+    - cron: '0 1 * * *'
+
+jobs:
+  tests:
+    name: development version tests (C++${{ matrix.cxx_standard }}, ${{ matrix.os }}, ${{ matrix.compiler }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64
+          - os: ubuntu-latest
+            compiler: g++
+            cxx_standard: 17
+          - os: ubuntu-latest
+            compiler: clang++
+            cxx_standard: 20
+          - os: ubuntu-latest
+            compiler: g++
+            cxx_standard: 23
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - name: Check out default branch of each submodule
+        shell: bash
+        run:
+          git submodule foreach git remote set-head origin -a
+          git submodule foreach 'git checkout $(git rev-parse --abbrev-ref origin/HEAD)'
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ clang cmake ninja-build
+      - name: Configure CMake
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+          ${{ matrix.compiler != 'MSVC' && '-G Ninja' || '' }}
+          ${{ matrix.compiler && format('-DCMAKE_CXX_COMPILER={0}', matrix.compiler) }}
+          ${{ matrix.cxx_standard && format('-DCMAKE_CXX_STANDARD={0}', matrix.cxx_standard) }}
+      - name: CMake Build
+        run: >-
+          cmake --build build -j4
+          ${{ matrix.compiler == 'MSVC' && '--config Release' || '' }}
+      - name: Copy build/Release/*.exe to build/ (MSVC)
+        if: matrix.compiler == 'MSVC'
+        run: |
+          cp build/Release/*.exe build/
+      - name: Run tests
+        run: |
+          ./build/sqd_tests
+      - name: Run benchmarks
+        run: |
+          ./build/sqd_benchmarks
