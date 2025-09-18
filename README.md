@@ -1,7 +1,7 @@
-![Operating system](https://img.shields.io/badge/%F0%9F%92%BB%20OS-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 [![C++17](https://img.shields.io/badge/C++17%20or%20later-%2300599C.svg?logo=c%2B%2B&logoColor=white)](#)
 ![Compiler](https://img.shields.io/badge/%F0%9F%94%A8%20Compiler-GCC%20%7C%20Clang%20%7C%20MSVC-informational)
-![Architecture](https://img.shields.io/badge/%E2%9A%99%EF%B8%8F%20Platform-x86_64%20%7C%20ARMv8-informational)
+![Architecture](https://img.shields.io/badge/%E2%9A%99%EF%B8%8F%20Platform-x86__64%20%7C%20ARMv8-informational)
+![Operating system](https://img.shields.io/badge/%F0%9F%92%BB%20OS-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 <br/>
 [![Docs (dev)](https://img.shields.io/badge/%F0%9F%93%84%20Docs-stable-blue.svg)](https://qiskit.github.io/qiskit-addon-sqd-hpc/)
 [![License](https://img.shields.io/github/license/Qiskit/qiskit-addon-sqd-hpc?label=License)](LICENSE.txt)
