@@ -1,3 +1,13 @@
+[![C++17](https://img.shields.io/badge/C++17%20or%20later-%2300599C.svg?logo=c%2B%2B&logoColor=white)](#)
+![Compilers](https://img.shields.io/badge/%F0%9F%94%A8%20Compilers-GCC%20%7C%20Clang%20%7C%20MSVC-informational)
+![Architectures](https://img.shields.io/badge/%E2%9A%99%EF%B8%8F%20Architectures-x86__64%20%7C%20ARMv8-informational)
+![Operating systems](https://img.shields.io/badge/%F0%9F%92%BB%20Operating_systems-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+<br/>
+[![Docs (dev)](https://img.shields.io/badge/%F0%9F%93%84%20Docs-stable-blue.svg)](https://qiskit.github.io/qiskit-addon-sqd-hpc/)
+[![License](https://img.shields.io/github/license/Qiskit/qiskit-addon-sqd-hpc?label=License)](LICENSE.txt)
+[![Tests](https://github.com/Qiskit/qiskit-addon-sqd-hpc/actions/workflows/test_latest_versions.yml/badge.svg)](https://github.com/Qiskit/qiskit-addon-sqd-hpc/actions/workflows/test_latest_versions.yml)
+[![Coverage](https://coveralls.io/repos/github/Qiskit/qiskit-addon-sqd-hpc/badge.svg?branch=main)](https://coveralls.io/github/Qiskit/qiskit-addon-sqd-hpc?branch=main)
+
 # qiskit-addon-sqd-hpc
 
 This repository contains an HPC-ready implementation of the [Qiskit addon for Sample-based Quantum Diagonalization (SQD)](https://github.com/Qiskit/qiskit-addon-sqd).
@@ -6,12 +16,12 @@ This repository contains an HPC-ready implementation of the [Qiskit addon for Sa
 
 - Modern C++17 template library, compatible with standard (STL) interfaces.
 - Provides low-level functions for performing postselection, subsampling, and configuration recovery.
-- Able to integrate with the [sbd eigensolver](https://github.com/r-ccs-cms/sbd), which was developed at RIKEN to enable large-scale SQD calculations.  See the [Qiskit 2.2 C API demo repository], in which a single binary harnessing both OpenMP and MPI-level parallelism is compiled for an HPC cluster.
-- Cross-architecture, tested on x86_64 and ARMv8.  Cross-platform, tested on Linux, macOS, and Windows.
+- Able to integrate with the [sbd eigensolver](https://github.com/r-ccs-cms/sbd), which was developed at RIKEN to enable large-scale SQD calculations.
+- Cross-architecture, tested on x86_64 and ARMv8.  Cross-platform, tested on Linux, macOS, and Windows, using GCC, Clang, and MSVC.
 - Compile with exceptions enabled or disabled -- your choice.  [RTTI](https://en.wikipedia.org/wiki/Run-time_type_information) is optional, too.
-- Complete API documentation.
-- Fully tested, with a test suite based on [doctest](https://github.com/doctest/doctest).
-- Performant, with a micro-benchmark suite based on [nanobench](https://github.com/martinus/nanobench).
+- Complete [API documentation](https://qiskit.github.io/qiskit-addon-sqd-hpc/).
+- Fully tested, with a [test suite](test/) based on [doctest](https://github.com/doctest/doctest).
+- Performant, with a [micro-benchmark suite](benchmark/) based on [nanobench](https://github.com/martinus/nanobench).
 
 ## Documentation
 
