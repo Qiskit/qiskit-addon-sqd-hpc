@@ -21,6 +21,23 @@ include_directories(include)
 add_subdirectory(deps/doctest)
 add_subdirectory(deps/nanobench)
 
+# boost::dynamic_bitset
+add_library(boost_dynamic_bitset INTERFACE)
+target_include_directories(boost_dynamic_bitset INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/assert/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/config/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/container_hash/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/core/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/describe/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/dynamic_bitset/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/integer/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/move/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/mp11/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/static_assert/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/throw_exception/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/type_traits/include
+)
+
 add_executable(sqd_tests
     test/doctest_main.cpp
     test/test_postselection.cpp
@@ -28,6 +45,10 @@ add_executable(sqd_tests
     test/test_configuration_recovery.cpp
 )
 target_include_directories(sqd_tests PRIVATE deps/doctest/doctest)
+target_link_libraries(sqd_tests
+    PRIVATE
+    boost_dynamic_bitset
+)
 
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(sqd_tests)
