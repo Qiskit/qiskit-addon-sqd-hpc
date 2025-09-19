@@ -17,6 +17,7 @@
 #include <random>
 #include <vector>
 
+#include "qiskit/addon/sqd/internal/concepts.hpp"
 #include "qiskit/addon/sqd/internal/exception-macros.hpp"
 
 namespace Qiskit
@@ -88,7 +89,7 @@ class NoReplacementSampler
     }
 
     /// Sample a single value
-    template <class RNGType>
+    template <QKA_SQD_CONCEPT_RNG_(RNGType)>
     std::size_t operator()(RNGType &rng)
     {
         if (remaining_nonzero_weights == 0) {

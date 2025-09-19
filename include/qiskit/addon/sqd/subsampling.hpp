@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "qiskit/addon/sqd/internal/concepts.hpp"
 #include "qiskit/addon/sqd/internal/exception-macros.hpp"
 #include "qiskit/addon/sqd/internal/sample-without-replacement.hpp"
 
@@ -58,7 +59,7 @@ namespace sqd
 /// @tparam RNGType Type of random number generator.
 template <
     typename BatchVectorType, typename BitstringVectorType, typename WeightVectorType,
-    typename RNGType>
+    QKA_SQD_CONCEPT_RNG_(RNGType)>
 void subsample(
     BatchVectorType &batch, const BitstringVectorType &bitstrings,
     const WeightVectorType &weights, unsigned int samples_per_batch, RNGType &rng
@@ -112,7 +113,9 @@ void subsample(
 /// @tparam RNGType Type of random number generator.
 ///
 /// @return The subsampled bitstrings.
-template <typename BitstringVectorType, typename WeightVectorType, typename RNGType>
+template <
+    typename BitstringVectorType, typename WeightVectorType,
+    QKA_SQD_CONCEPT_RNG_(RNGType)>
 BitstringVectorType subsample(
     const BitstringVectorType &bitstrings, const WeightVectorType &weights,
     unsigned int samples_per_batch, RNGType &rng
@@ -150,7 +153,7 @@ BitstringVectorType subsample(
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
 template <
     typename BatchesVectorType, typename BitstringVectorType, typename WeightVectorType,
-    typename RNGType>
+    QKA_SQD_CONCEPT_RNG_(RNGType)>
 void subsample_multiple_batches(
     BatchesVectorType &batches, const BitstringVectorType &bitstrings,
     const WeightVectorType &weights, unsigned int samples_per_batch,
@@ -182,7 +185,9 @@ void subsample_multiple_batches(
 /// @tparam RNGType Type of random number generator.
 ///
 /// @return The batches of subsampled bitstrings.
-template <typename BitstringVectorType, typename WeightVectorType, typename RNGType>
+template <
+    typename BitstringVectorType, typename WeightVectorType,
+    QKA_SQD_CONCEPT_RNG_(RNGType)>
 std::vector<BitstringVectorType> subsample_multiple_batches(
     const BitstringVectorType &bitstrings, const WeightVectorType &weights,
     unsigned int samples_per_batch, unsigned int num_batches, RNGType &rng
