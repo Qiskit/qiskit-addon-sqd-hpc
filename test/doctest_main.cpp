@@ -12,3 +12,28 @@
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
+
+#if QKA_SQD_DISABLE_EXCEPTIONS
+#include <exception>
+#include <iostream>
+
+#include <boost/throw_exception.hpp>
+
+// The following overloads are required (by boost) to be user-defined function
+// when expections are disabled.
+namespace boost
+{
+void throw_exception(std::exception const &e)
+{
+    std::cerr << "Unhandled exception during testing: " << e.what() << std::endl;
+    std::terminate();
+}
+
+void throw_exception(std::exception const &e, boost::source_location const &loc)
+{
+    throw_exception(e);
+}
+
+} // namespace boost
+
+#endif // QKA_SQD_DISABLE_EXCEPTIONS
