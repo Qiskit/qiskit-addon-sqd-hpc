@@ -1,0 +1,2 @@
+qiskit-addon-sqd[notebook-dependencies]
+h5py

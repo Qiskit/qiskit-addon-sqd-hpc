@@ -40,3 +40,15 @@
 [submodule "deps/boost/mp11"]
 	path = deps/boost/mp11
 	url = https://github.com/boostorg/mp11.git
+[submodule "deps/sbd"]
+	path = deps/sbd
+	url = https://github.com/r-ccs-cms/sbd.git
+[submodule "deps/highfive"]
+	path = deps/highfive
+	url = https://github.com/highfive-devs/highfive.git
+[submodule "deps/xtl"]
+	path = deps/xtl
+	url = https://github.com/xtensor-stack/xtl.git
+[submodule "deps/xtensor"]
+	path = deps/xtensor
+	url = https://github.com/xtensor-stack/xtensor.git
