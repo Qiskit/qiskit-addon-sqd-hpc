@@ -1,6 +1,6 @@
 # See the following link for reasonable minimum version suggestions
 # https://cliutils.gitlab.io/modern-cmake/chapters/intro/dodonot.html#what-minimum-to-choose-os-support
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20...4.1)
 
 project(QiskitAddonSQD
     VERSION 0.0.0
