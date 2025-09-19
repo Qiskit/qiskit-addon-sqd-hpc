@@ -19,14 +19,24 @@
 #include <utility>
 #include <vector>
 
+#include <boost/dynamic_bitset.hpp>
+
+#include "bitset_compat.hpp"
+
 using Qiskit::addon::sqd::recover_configurations;
 
-TEST_CASE("Configuration recovery")
+TEST_CASE_TEMPLATE(
+    "Configuration recovery", BitstringType, std::bitset<4>, boost::dynamic_bitset<>
+)
 {
     constexpr auto N = 4;
-    using Bitstring = std::bitset<N>;
     std::mt19937_64 rng;
-    std::vector<Bitstring> bitstrings{0, 1, 2, 3, 4};
+    std::vector<BitstringType> bitstrings;
+    for (unsigned int i = 0; i < 5; ++i) {
+        BitstringType bs;
+        set_bitset(N, bs, i);
+        bitstrings.push_back(bs);
+    }
     std::vector<double> probabilities{1, 2, 3, 4, 5};
     std::vector<double> avg_occupancies{0.1, 0.2};
     unsigned int num_elec_a = 1, num_elec_b = 1;
@@ -150,9 +160,14 @@ TEST_CASE("Configuration recovery tests from python addon")
     }
 }
 
-TEST_CASE("Bit manipulation")
+TEST_CASE_TEMPLATE(
+    "Bit manipulation", BitstringType, std::bitset<7>, boost::dynamic_bitset<>
+)
 {
-    std::bitset<7> bs{93};
+    constexpr std::size_t N = 7;
+    BitstringType bs, bs_expected;
+    set_bitset(N, bs, 93);
+    set_bitset(N, bs_expected, 5);
     Qiskit::addon::sqd::internal::mask_lower_n_bits_inplace(bs, 3);
-    CHECK(bs == 5);
+    CHECK(bs == bs_expected);
 }
