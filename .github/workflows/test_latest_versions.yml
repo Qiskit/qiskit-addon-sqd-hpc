@@ -71,7 +71,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++ clang cmake ninja-build libhdf5-dev
+          sudo apt-get install -y g++ clang cmake ninja-build libhdf5-dev libopenblas-dev pkg-config libssl-dev libomp-dev libeigen3-dev openmpi-bin libopenmpi-dev
       - name: Configure CMake
         run: >-
           cmake -S . -B build
