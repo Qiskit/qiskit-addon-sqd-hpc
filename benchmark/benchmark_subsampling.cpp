@@ -25,7 +25,7 @@ static void benchmark_with_bitset(ankerl::nanobench::Bench &bench, unsigned int 
     for (unsigned int i = 0; i < 5; ++i) {
         BitstringType bs;
         set_bitset(N, bs, i);
-        bitstrings.push_back(bs);
+        bitstrings.push_back(std::move(bs));
     }
     std::vector<double> weights{1, 2, 3, 4, 5};
     std::mt19937 rng;
@@ -45,6 +45,6 @@ void benchmark_subsampling(ankerl::nanobench::Bench &bench)
     bench.title(std::string("Subsampling w/ std::bitset"));
     benchmark_with_bitset<std::bitset<4>>(bench, 4);
 
-    bench.title(std::string("Subsampling w/ dynamic_bitset"));
+    bench.title(std::string("Subsampling w/ boost::dynamic_bitset"));
     benchmark_with_bitset<boost::dynamic_bitset<>>(bench, 4);
 }

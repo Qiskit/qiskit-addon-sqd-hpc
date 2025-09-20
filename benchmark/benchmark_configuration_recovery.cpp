@@ -20,17 +20,15 @@
 
 #include "qiskit/addon/sqd/configuration_recovery.hpp"
 
+#include "../test/bitset_compat.hpp"
+
 using Qiskit::addon::sqd::recover_configurations;
 
-void benchmark_configuration_recovery(ankerl::nanobench::Bench &bench)
+template <typename BitstringType, unsigned int N>
+static void benchmark_with_bitset(ankerl::nanobench::Bench &bench)
 {
-    bench.title("Configuration recovery");
-
-    constexpr auto half_N = 40;
-    constexpr auto N = 2 * half_N;
+    constexpr auto half_N = N / 2;
     constexpr auto num_elec_a = 10u;
-
-    using Bitstring = std::bitset<N>;
 
     std::mt19937_64 rng;
     std::uniform_real_distribution<double> dis(0.0, 1.0);
@@ -46,10 +44,12 @@ void benchmark_configuration_recovery(ankerl::nanobench::Bench &bench)
 
     for (int num_bitstrings : {10, 100, 1000, 10000, 100000}) {
         // Populate some sequential bitstrings
-        std::vector<Bitstring> bitstrings;
+        std::vector<BitstringType> bitstrings;
         bitstrings.reserve(num_bitstrings);
         for (int i = 0; i < num_bitstrings; ++i) {
-            bitstrings.emplace_back(i);
+            BitstringType bs;
+            set_bitset(N, bs, i);
+            bitstrings.push_back(std::move(bs));
         }
 
         // Populate random probabilities
@@ -67,4 +67,13 @@ void benchmark_configuration_recovery(ankerl::nanobench::Bench &bench)
             );
         });
     }
+}
+
+void benchmark_configuration_recovery(ankerl::nanobench::Bench &bench)
+{
+    bench.title("Configuration recovery with std::bitset");
+    benchmark_with_bitset<std::bitset<80>, 80>(bench);
+
+    bench.title("Configuration recovery with boost::dynamic_bitset");
+    benchmark_with_bitset<boost::dynamic_bitset<>, 80>(bench);
 }
