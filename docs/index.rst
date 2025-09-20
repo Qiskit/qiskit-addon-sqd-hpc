@@ -19,5 +19,6 @@ Table of Contents
 
    Compilation flags <compilation-flags>
    API Reference <apidocs/index>
+   Example app: tutorials <tutorials/index>
    GitHub <https://github.com/Qiskit/qiskit-addon-sqd-hpc>
    Release Notes <release-notes>

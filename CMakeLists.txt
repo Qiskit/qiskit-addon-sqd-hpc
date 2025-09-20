@@ -21,6 +21,27 @@ include_directories(include)
 add_subdirectory(deps/doctest)
 add_subdirectory(deps/nanobench)
 
+function(find_package_fallback package_name subdir)
+    find_package(${package_name} QUIET)
+    if(${package_name}_FOUND)
+        message(STATUS "${package_name} found")
+    else()
+        message(STATUS "${package_name} not found, using version in ${subdir}")
+        set("${package_name}_VENDORED" TRUE PARENT_SCOPE)
+        add_subdirectory(${subdir})
+    endif()
+endfunction()
+
+# FIXME: These are required only by the sqd-hdf5-chemistry executable;
+# ideally we could make them optional overall
+find_package_fallback(HighFive deps/highfive)
+find_package(MPI REQUIRED)
+find_package(OpenMP REQUIRED)
+set(xtensor_INCLUDE_DIRS
+    deps/xtensor/include
+    deps/xtl/include
+)
+
 # boost::dynamic_bitset
 add_library(boost_dynamic_bitset INTERFACE)
 target_include_directories(boost_dynamic_bitset INTERFACE
@@ -37,6 +58,23 @@ target_include_directories(boost_dynamic_bitset INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/throw_exception/include
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/type_traits/include
 )
+
+# sbd library
+find_package(BLAS REQUIRED)
+add_library(sbd INTERFACE)
+target_include_directories(sbd INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/sbd/include
+    ${MPI_CXX_INCLUDE_DIRS}
+    ${BLAS_INCLUDE_DIRS}
+)
+target_link_libraries(sbd
+    INTERFACE
+    ${BLAS_LIBRARIES}
+    OpenMP::OpenMP_CXX
+    MPI::MPI_CXX
+)
+
+add_definitions(-DH5_USE_XTENSOR)
 
 add_executable(sqd_tests
     test/doctest_main.cpp
@@ -60,3 +98,16 @@ add_executable(sqd_benchmarks
 )
 target_include_directories(sqd_benchmarks PRIVATE deps/nanobench/src/include)
 target_link_libraries(sqd_benchmarks PRIVATE nanobench)
+
+add_executable(sqd-hdf5-chemistry src/sqd-hdf5-chemistry.cpp)
+target_include_directories(sqd-hdf5-chemistry
+    PRIVATE
+    ${xtensor_INCLUDE_DIRS}
+)
+target_link_libraries(sqd-hdf5-chemistry
+    PRIVATE
+    HighFive
+    boost_dynamic_bitset
+    sbd
+    MPI::MPI_CXX
+)
