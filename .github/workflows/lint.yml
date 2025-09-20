@@ -35,7 +35,7 @@ jobs:
       - name: Install via apt-get
         run: |
           sudo apt-get update
-          sudo apt-get install -y fd-find clang-tidy-21 clang-format-21 libhdf5-dev libopenblas-dev pkg-config libssl-dev libomp-dev openmpi-bin libopenmpi-dev
+          sudo apt-get install -y fd-find clang-tidy-21 clang-format-21 libhdf5-dev libopenblas-dev pkg-config libomp-dev libgomp-dev openmpi-bin libopenmpi-dev
           sudo ln -fs clang-format-21 /usr/bin/clang-format
           sudo ln -fs clang-tidy-21 /usr/bin/clang-tidy
           sudo ln -fs /usr/bin/fdfind /usr/local/bin/fd
