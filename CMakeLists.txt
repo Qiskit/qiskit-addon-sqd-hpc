@@ -59,4 +59,8 @@ add_executable(sqd_benchmarks
     benchmark/benchmark_configuration_recovery.cpp
 )
 target_include_directories(sqd_benchmarks PRIVATE deps/nanobench/src/include)
-target_link_libraries(sqd_benchmarks PRIVATE nanobench)
+target_link_libraries(sqd_benchmarks
+    PRIVATE
+    nanobench
+    boost_dynamic_bitset
+)

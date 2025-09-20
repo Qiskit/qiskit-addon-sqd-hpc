@@ -16,14 +16,19 @@
 
 #include "qiskit/addon/sqd/subsampling.hpp"
 
-void benchmark_subsampling(ankerl::nanobench::Bench &bench)
+#include "../test/bitset_compat.hpp"
+
+template <typename BitstringType, unsigned int N>
+static void benchmark_with_bitset(ankerl::nanobench::Bench &bench)
 {
-    bench.title("Subsampling");
-    constexpr auto N = 4;
-    using Bitstring = std::bitset<N>;
-    std::mt19937 rng;
-    std::vector<Bitstring> bitstrings{0, 1, 2, 3, 4};
+    std::vector<BitstringType> bitstrings;
+    for (unsigned int i = 0; i < 5; ++i) {
+        BitstringType bs;
+        set_bitset(N, bs, i);
+        bitstrings.push_back(std::move(bs));
+    }
     std::vector<double> weights{1, 2, 3, 4, 5};
+    std::mt19937 rng;
     constexpr auto samples_per_batch = 4;
     for (int num_batches : {2, 10, 25}) {
         std::vector<decltype(bitstrings)> batches;
@@ -33,4 +38,13 @@ void benchmark_subsampling(ankerl::nanobench::Bench &bench)
             );
         });
     }
+}
+
+void benchmark_subsampling(ankerl::nanobench::Bench &bench)
+{
+    bench.title(std::string("Subsampling w/ std::bitset"));
+    benchmark_with_bitset<std::bitset<4>, 4>(bench);
+
+    bench.title(std::string("Subsampling w/ boost::dynamic_bitset"));
+    benchmark_with_bitset<boost::dynamic_bitset<>, 4>(bench);
 }
