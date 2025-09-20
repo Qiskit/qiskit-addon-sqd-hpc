@@ -18,8 +18,8 @@
 
 #include "../test/bitset_compat.hpp"
 
-template <typename BitstringType>
-static void benchmark_with_bitset(ankerl::nanobench::Bench &bench, unsigned int N)
+template <typename BitstringType, unsigned int N>
+static void benchmark_with_bitset(ankerl::nanobench::Bench &bench)
 {
     std::vector<BitstringType> bitstrings;
     for (unsigned int i = 0; i < 5; ++i) {
@@ -43,8 +43,8 @@ static void benchmark_with_bitset(ankerl::nanobench::Bench &bench, unsigned int 
 void benchmark_subsampling(ankerl::nanobench::Bench &bench)
 {
     bench.title(std::string("Subsampling w/ std::bitset"));
-    benchmark_with_bitset<std::bitset<4>>(bench, 4);
+    benchmark_with_bitset<std::bitset<4>, 4>(bench);
 
     bench.title(std::string("Subsampling w/ boost::dynamic_bitset"));
-    benchmark_with_bitset<boost::dynamic_bitset<>>(bench, 4);
+    benchmark_with_bitset<boost::dynamic_bitset<>, 4>(bench);
 }
