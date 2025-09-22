@@ -16,6 +16,7 @@ Table of Contents
 -----------------
 
 .. toctree::
+   :maxdepth: 2
 
    Compilation flags <compilation-flags>
    API Reference <apidocs/index>
