@@ -29,3 +29,8 @@ Compiler flags are passed to ``cmake`` via the ``-DCMAKE_CXX_FLAGS`` option.  Fo
    make
 
 Note that compiling this repository's test suite requires that ``#define DOCTEST_CONFIG_NO_EXCEPTIONS_BUT_WITH_ALL_ASSERTS`` be set, as exceptions must be disabled in the doctest framework as well as the SQD library.
+
+Concepts (C++20 and later)
+--------------------------
+
+This library is designed to use C++ concepts if they are available (i.e., if the code is compiled according to C++20 or a later version of the standard).  If possible, users are encouraged to use such a compiler when developing, as this will likely lead to better error messages from the compiler (e.g., when a template argument has an unexpected type).
