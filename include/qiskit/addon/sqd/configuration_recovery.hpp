@@ -224,7 +224,7 @@ template <
         double density_s = static_cast<double>(num_elec[s]) / partition_size;
         // NOLINTEND(bugprone-narrowing-conversions)
         for (std::size_t i = 0; i < partition_size; ++i) {
-            const auto occ = std::max(0.0, std::min(1.0, avg_occupancies[s][i]));
+            const auto occ = avg_occupancies[s][i];
             probs_table[s][0][i] = internal::_p_flip_0_to_1(density_s, occ);
             probs_table[s][1][i] = internal::_p_flip_1_to_0(density_s, occ);
         }

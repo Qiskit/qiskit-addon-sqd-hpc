@@ -78,8 +78,7 @@ TEST_CASE("Configuration recovery tests from python addon")
         const std::vector<std::bitset<num_orbs>> bitstrings(1);
         const std::vector<double> probs(1, 1.0);
         std::array<std::vector<double>, 2> occs{
-            std::vector<double>(half_orbs, 1.000001),
-            std::vector<double>(half_orbs, 1.0)
+            std::vector<double>(half_orbs, 1.0), std::vector<double>(half_orbs, 1.0)
         };
         auto [mat_rec, probs_rec] =
             recover_configurations(bitstrings, probs, occs, {ham_r, ham_l}, rng);
@@ -97,7 +96,7 @@ TEST_CASE("Configuration recovery tests from python addon")
         const std::vector<std::bitset<num_orbs>> bitstrings(1, 0b1111);
         const std::vector<double> probs(1, 1.0);
         std::array<std::vector<double>, 2> occs{
-            std::vector<double>(half_orbs, -1e6), std::vector<double>(half_orbs)
+            std::vector<double>(half_orbs), std::vector<double>(half_orbs)
         };
         auto [mat_rec, probs_rec] =
             recover_configurations(bitstrings, probs, occs, {ham_r, ham_l}, rng);
