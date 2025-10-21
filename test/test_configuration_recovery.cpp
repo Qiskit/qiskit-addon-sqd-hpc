@@ -23,12 +23,15 @@
 
 using Qiskit::addon::sqd::recover_configurations;
 
-TEST_CASE_TEMPLATE(
-    "Configuration recovery", BitstringType, std::bitset<4>, boost::dynamic_bitset<>
 #if !QKA_SQD_DISABLE_EXCEPTIONS
-    ,
-    Bitset2::bitset2<4>
+#define BITSET2_IF_AVAILABLE , Bitset2::bitset2<4>
+#else
+#define BITSET2_IF_AVAILABLE
 #endif
+
+TEST_CASE_TEMPLATE(
+    "Configuration recovery", BitstringType, std::bitset<4>,
+    boost::dynamic_bitset<> BITSET2_IF_AVAILABLE
 )
 {
     constexpr auto N = 4;
