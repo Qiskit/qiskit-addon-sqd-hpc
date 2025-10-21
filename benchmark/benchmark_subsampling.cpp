@@ -47,4 +47,9 @@ void benchmark_subsampling(ankerl::nanobench::Bench &bench)
 
     bench.title(std::string("Subsampling w/ boost::dynamic_bitset"));
     benchmark_with_bitset<boost::dynamic_bitset<>, 4>(bench);
+
+#if !QKA_SQD_DISABLE_EXCEPTIONS
+    bench.title("Subsampling with Bitset2::bitset2");
+    benchmark_with_bitset<Bitset2::bitset2<4>, 4>(bench);
+#endif // !QKA_SQD_DISABLE_EXCEPTIONS
 }

@@ -19,14 +19,16 @@
 #include <utility>
 #include <vector>
 
-#include <boost/dynamic_bitset.hpp>
-
 #include "bitset_compat.hpp"
 
 using Qiskit::addon::sqd::recover_configurations;
 
 TEST_CASE_TEMPLATE(
     "Configuration recovery", BitstringType, std::bitset<4>, boost::dynamic_bitset<>
+#if !QKA_SQD_DISABLE_EXCEPTIONS
+    ,
+    Bitset2::bitset2<4>
+#endif
 )
 {
     constexpr auto N = 4;
