@@ -32,15 +32,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y g++ cmake ninja-build
+      - name: Install gcovr
+        run: |
+          python -m pip install --upgrade pip
+          pip install gcovr
       - name: Check versions
         run: |
           g++ --version
           gcovr -v
           gcovr --gcov-executable "gcov --version"
-      - name: Install tox
-        run: |
-          python -m pip install --upgrade pip
-          pip install gcovr
       - name: Configure CMake
         run: >-
           cmake -S . -B build -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_CXX_FLAGS="--coverage" -G Ninja
