@@ -72,8 +72,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y g++ clang cmake ninja-build
+      - name: Show MSVC version info
+        if: matrix.compiler == 'MSVC'
+        run: |
+          where cl
+          cl
+          cmake --help
       - name: Configure CMake
         run: >-
+          cmake --version
           cmake -S . -B build
           -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
           ${{ matrix.compiler != 'MSVC' && '-G Ninja' || '' }}
