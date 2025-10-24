@@ -23,7 +23,7 @@
 
 using Qiskit::addon::sqd::recover_configurations;
 
-#if !QKA_SQD_DISABLE_EXCEPTIONS
+#if !QKA_SQD_DISABLE_EXCEPTIONS && !(_MSVC_LANG == 202002L)
 #define BITSET2_IF_AVAILABLE , Bitset2::bitset2<4>
 #else
 #define BITSET2_IF_AVAILABLE

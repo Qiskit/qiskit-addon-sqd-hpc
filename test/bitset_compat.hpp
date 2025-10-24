@@ -19,7 +19,7 @@
 
 #include <boost/dynamic_bitset.hpp>
 
-#if !QKA_SQD_DISABLE_EXCEPTIONS
+#if !QKA_SQD_DISABLE_EXCEPTIONS && !(_MSVC_LANG == 202002L)
 
 #include <bitset2.hpp>
 
@@ -30,7 +30,7 @@ static void set_bitset(unsigned int N_, Bitset2::bitset2<N> &bitset, unsigned in
     bitset = Bitset2::bitset2<N>(value);
 }
 
-#endif // !QKA_SQD_DISABLE_EXCEPTIONS
+#endif // !QKA_SQD_DISABLE_EXCEPTIONS && !(_MSVC_LANG == 202002L)
 
 static void
 set_bitset(unsigned int N, boost::dynamic_bitset<> &bitset, unsigned int value)
