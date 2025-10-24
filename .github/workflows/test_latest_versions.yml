@@ -76,7 +76,6 @@ jobs:
         if: matrix.compiler == 'MSVC'
         run: |
           where cl
-          cl
           cmake --help
           cmake --version
       - name: Configure CMake
