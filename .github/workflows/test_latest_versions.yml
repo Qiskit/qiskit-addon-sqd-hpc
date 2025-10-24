@@ -78,9 +78,9 @@ jobs:
           where cl
           cl
           cmake --help
+          cmake --version
       - name: Configure CMake
         run: >-
-          cmake --version
           cmake -S . -B build
           -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
           ${{ matrix.compiler != 'MSVC' && '-G Ninja' || '' }}
