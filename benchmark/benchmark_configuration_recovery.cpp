@@ -76,4 +76,9 @@ void benchmark_configuration_recovery(ankerl::nanobench::Bench &bench)
 
     bench.title("Configuration recovery with boost::dynamic_bitset");
     benchmark_with_bitset<boost::dynamic_bitset<>, 80>(bench);
+
+#if !QKA_SQD_DISABLE_EXCEPTIONS && !(_MSVC_LANG == 202002L)
+    bench.title("Configuration recovery with Bitset2::bitset2");
+    benchmark_with_bitset<Bitset2::bitset2<80>, 80>(bench);
+#endif // !QKA_SQD_DISABLE_EXCEPTIONS && !(_MSVC_LANG == 202002L)
 }

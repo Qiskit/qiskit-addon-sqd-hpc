@@ -19,17 +19,30 @@
 
 #include <boost/dynamic_bitset.hpp>
 
+#if !QKA_SQD_DISABLE_EXCEPTIONS && !(_MSVC_LANG == 202002L)
+
+#include <bitset2.hpp>
+
 template <std::size_t N>
-static void set_bitset(unsigned int N_, std::bitset<N> &bitset, unsigned int value)
+static void set_bitset(unsigned int N_, Bitset2::bitset2<N> &bitset, unsigned int value)
 {
     assert(N_ == N);
-    bitset = std::bitset<N>(value);
+    bitset = Bitset2::bitset2<N>(value);
 }
+
+#endif // !QKA_SQD_DISABLE_EXCEPTIONS && !(_MSVC_LANG == 202002L)
 
 static void
 set_bitset(unsigned int N, boost::dynamic_bitset<> &bitset, unsigned int value)
 {
     bitset = std::move(boost::dynamic_bitset<>(N, value));
+}
+
+template <std::size_t N>
+static void set_bitset(unsigned int N_, std::bitset<N> &bitset, unsigned int value)
+{
+    assert(N_ == N);
+    bitset = std::bitset<N>(value);
 }
 
 #endif // BITSET_COMPAT_HPP_
