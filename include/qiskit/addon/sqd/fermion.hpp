@@ -50,8 +50,8 @@ namespace internal
 /// @param[in] bitstrings Population of bitstrings.  @param[in] max_dimension
 /// Maximum dimension of returned CI strings.  If less than the number of CI
 ///     strings, the list of CI strings will be truncated.
-/// @param[in] must_include A list of CI strings that will be included in the output,
-///     regardless of whether they are contained in \p bitstrings.
+/// @param[in] include_configurations A list of CI strings that will be included in the
+///     output, regardless of whether they are contained in \p bitstrings.
 ///
 /// @tparam BitstringVectorType Type of `bitstrings`, compatible with
 ///     `std::vector<boost::dynamic_bitset<>>`.
@@ -61,7 +61,7 @@ auto bitstrings_to_ci_strings_symmetrize_spin(
     std::optional<unsigned int> max_dimension = std::nullopt,
     std::optional<std::reference_wrapper<const std::vector<
         internal::HalfSize<typename BitstringVectorType::value_type>>>>
-        must_include = std::nullopt
+        include_configurations = std::nullopt
 ) -> std::vector<internal::HalfSize<typename BitstringVectorType::value_type>>
 {
     using BitstringType = typename BitstringVectorType::value_type;
@@ -76,8 +76,8 @@ auto bitstrings_to_ci_strings_symmetrize_spin(
 
     std::unordered_map<HalfBitstringType, unsigned int> counts;
     // Include any CI strings that are being explicitly included
-    if (must_include) {
-        for (const auto &ci_string : must_include->get()) {
+    if (include_configurations) {
+        for (const auto &ci_string : include_configurations->get()) {
             // Add a large constant, which is larger than any existing count
             counts[ci_string] += bitstrings.size();
         }
