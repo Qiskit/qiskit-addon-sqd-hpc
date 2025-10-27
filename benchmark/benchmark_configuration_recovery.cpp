@@ -37,7 +37,7 @@ static void benchmark_with_bitset(ankerl::nanobench::Bench &bench)
     std::array<std::vector<double>, 2> avg_occupancies;
     for (int s = 0; s < 2; ++s) {
         avg_occupancies[s].reserve(half_N);
-        for (int i = 0; i < half_N; ++i) {
+        for (unsigned int i = 0; i < half_N; ++i) {
             avg_occupancies[s].push_back(dis(rng));
         }
     }

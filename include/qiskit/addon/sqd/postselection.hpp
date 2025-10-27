@@ -72,8 +72,8 @@ class MatchesRightLeftHamming
         {
             QKA_SQD_THROW_INVALID_ARGUMENT_("`bitstring` must have even length");
         }
-        auto left_count = (bitstring >> (bitstring.size() / 2)).count();
-        auto right_count = bitstring.count() - left_count;
+        const auto left_count = (bitstring >> (bitstring.size() / 2)).count();
+        decltype(left_count) right_count = bitstring.count() - left_count;
         return right_count == right_target && left_count == left_target;
     }
 };
