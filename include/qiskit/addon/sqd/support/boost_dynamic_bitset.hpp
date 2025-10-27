@@ -32,6 +32,11 @@ namespace internal
 {
 
 template <typename Block, typename Allocator>
+struct HalfSizeImpl<boost::dynamic_bitset<Block, Allocator>> {
+    using type = boost::dynamic_bitset<Block, Allocator>;
+};
+
+template <typename Block, typename Allocator>
 std::array<boost::dynamic_bitset<Block, Allocator>, 2>
 split_bitstring(const boost::dynamic_bitset<Block, Allocator> &bitset)
 {
@@ -39,7 +44,7 @@ split_bitstring(const boost::dynamic_bitset<Block, Allocator> &bitset)
         QKA_SQD_THROW_RUNTIME_ERROR_("Bitset size must be even");
     }
     const auto half_N = bitset.size() / 2;
-    boost::dynamic_bitset<Block, Allocator> right, left;
+    boost::dynamic_bitset<Block, Allocator> right(half_N), left(half_N);
     for (std::size_t i = 0; i < half_N; ++i) {
         right[i] = bitset[i];
         left[i] = bitset[i + half_N];
