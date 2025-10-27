@@ -32,10 +32,10 @@ static void set_bitset(unsigned int N_, Bitset2::bitset2<N> &bitset, unsigned in
 
 #endif // !QKA_SQD_DISABLE_EXCEPTIONS && !(_MSVC_LANG == 202002L)
 
-static void
+static inline void
 set_bitset(unsigned int N, boost::dynamic_bitset<> &bitset, unsigned int value)
 {
-    bitset = std::move(boost::dynamic_bitset<>(N, value));
+    bitset = boost::dynamic_bitset<>(N, value);
 }
 
 template <std::size_t N>
