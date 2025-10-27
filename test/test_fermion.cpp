@@ -10,8 +10,6 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-#include "qiskit/addon/sqd/support/boost_dynamic_bitset.hpp"
-
 #include "qiskit/addon/sqd/fermion.hpp"
 
 #include <bitset>

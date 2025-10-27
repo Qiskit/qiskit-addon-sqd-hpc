@@ -15,8 +15,11 @@
 
 /// Support for `boost::dynamic_bitset` (optional include)
 
-#include "qiskit/addon/sqd/bitset_common.hpp"
+#include "qiskit/addon/sqd/internal/bitset_common.hpp"
 #include "qiskit/addon/sqd/internal/exception-macros.hpp"
+
+#if __has_include(<boost/dynamic_bitset.hpp>)
+
 #include <boost/dynamic_bitset.hpp>
 
 namespace Qiskit
@@ -59,5 +62,7 @@ split_bitstring(const boost::dynamic_bitset<Block, Allocator> &bitset)
 } // namespace addon
 
 } // namespace Qiskit
+
+#endif // _has_include("boost/dynamic_bitset.hpp")
 
 #endif // QISKIT_ADDON_SQD_SUPPORT_BOOST_DYNAMIC_BITSET_HPP_

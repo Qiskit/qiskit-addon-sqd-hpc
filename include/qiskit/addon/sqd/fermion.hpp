@@ -24,7 +24,7 @@
 #include <utility>
 #include <vector>
 
-#include "qiskit/addon/sqd/bitset_common.hpp"
+#include "qiskit/addon/sqd/bitset_full.hpp"
 #include "qiskit/addon/sqd/internal/exception-macros.hpp"
 
 namespace Qiskit
