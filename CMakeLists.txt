@@ -55,6 +55,7 @@ add_executable(sqd_tests
     test/test_postselection.cpp
     test/test_subsampling.cpp
     test/test_configuration_recovery.cpp
+    test/test_fermion.cpp
 )
 target_include_directories(sqd_tests PRIVATE deps/doctest/doctest)
 target_link_libraries(sqd_tests
