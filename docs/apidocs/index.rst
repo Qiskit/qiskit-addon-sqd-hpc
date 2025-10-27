@@ -8,3 +8,4 @@ SQD API reference
    postselection
    subsampling
    configuration_recovery
+   fermion
