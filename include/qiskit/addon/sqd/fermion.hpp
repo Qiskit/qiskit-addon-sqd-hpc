@@ -78,6 +78,12 @@ auto bitstrings_to_ci_strings_symmetrize_spin(
     // Include any CI strings that are being explicitly included
     if (include_configurations) {
         for (const auto &ci_string : include_configurations->get()) {
+            if (ci_string.size() != norb) {
+                QKA_SQD_THROW_INVALID_ARGUMENT_(
+                    "CI string in `include_configurations` has length not equal to the "
+                    "number of orbitals"
+                );
+            }
             // Add a large constant, which is larger than any existing count
             counts[ci_string] += bitstrings.size();
         }
