@@ -47,9 +47,9 @@ namespace internal
 /// right and left halves of all the bitstrings into a single set of unique
 /// configurations.
 ///
-/// @param[in] bitstrings Population of bitstrings.  @param[in] max_dimension
-/// Maximum dimension of returned CI strings.  If less than the number of CI
-///     strings, the list of CI strings will be truncated.
+/// @param[in] bitstrings Population of bitstrings.
+/// @param[in] max_dimension Maximum dimension of returned CI strings.  If less than the
+///     number of CI strings, the list of CI strings will be truncated.
 /// @param[in] include_configurations A list of CI strings that will be included in the
 ///     output, regardless of whether they are contained in \p bitstrings.
 ///
