@@ -43,3 +43,6 @@
 [submodule "deps/bitset2"]
 	path = deps/bitset2
 	url = https://github.com/ClaasBontus/bitset2.git
+[submodule "deps/sbd"]
+	path = deps/sbd
+	url = https://github.com/r-ccs-cms/sbd.git

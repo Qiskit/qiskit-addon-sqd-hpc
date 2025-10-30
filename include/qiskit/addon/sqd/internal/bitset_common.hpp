@@ -18,6 +18,7 @@
 #include <array>
 #include <bitset>
 #include <cstddef>
+#include <string>
 
 namespace Qiskit
 {
@@ -53,6 +54,12 @@ std::array<HalfSize<std::bitset<N>>, 2> split_bitstring(const std::bitset<N> &bi
         left[i] = bitset[i + half_N];
     }
     return {right, left};
+}
+
+template <std::size_t N>
+std::string bitset_to_string(const std::bitset<N> &bitset)
+{
+    return bitset.to_string();
 }
 
 } // namespace internal
