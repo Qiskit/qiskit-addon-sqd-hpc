@@ -55,6 +55,14 @@ split_bitstring(const boost::dynamic_bitset<Block, Allocator> &bitset)
     return {right, left};
 }
 
+template <typename Block, typename Allocator>
+std::string bitset_to_string(const boost::dynamic_bitset<Block, Allocator> &bitstring)
+{
+    std::string str;
+    boost::to_string(bitstring, str);
+    return str;
+}
+
 } // namespace internal
 
 } // namespace sqd
