@@ -154,12 +154,8 @@ BitstringVectorType subsample(
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
 template <
     typename BatchesVectorType, typename BitstringVectorType, typename WeightVectorType,
-<<<<<<< HEAD
-    typename RNGType
+    QKA_SQD_CONCEPT_RNG_(RNGType)
 >
-=======
-    QKA_SQD_CONCEPT_RNG_(RNGType)>
->>>>>>> main
 void subsample_multiple_batches(
     BatchesVectorType &batches, const BitstringVectorType &bitstrings,
     const WeightVectorType &weights, unsigned int samples_per_batch,
