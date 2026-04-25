@@ -37,7 +37,7 @@ static void benchmark_with_bitset(ankerl::nanobench::Bench &bench)
     std::array<std::vector<double>, 2> avg_occupancies;
     for (int s = 0; s < 2; ++s) {
         avg_occupancies[s].reserve(half_N);
-        for (int i = 0; i < half_N; ++i) {
+        for (unsigned int i = 0; i < half_N; ++i) {
             avg_occupancies[s].push_back(dis(rng));
         }
     }
@@ -76,4 +76,9 @@ void benchmark_configuration_recovery(ankerl::nanobench::Bench &bench)
 
     bench.title("Configuration recovery with boost::dynamic_bitset");
     benchmark_with_bitset<boost::dynamic_bitset<>, 80>(bench);
+
+#if !QKA_SQD_DISABLE_EXCEPTIONS && !(_MSVC_LANG == 202002L)
+    bench.title("Configuration recovery with Bitset2::bitset2");
+    benchmark_with_bitset<Bitset2::bitset2<80>, 80>(bench);
+#endif // !QKA_SQD_DISABLE_EXCEPTIONS && !(_MSVC_LANG == 202002L)
 }

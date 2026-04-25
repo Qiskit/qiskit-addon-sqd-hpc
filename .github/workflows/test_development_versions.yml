@@ -32,7 +32,7 @@ jobs:
             compiler: g++
             cxx_standard: 23
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
       - name: Check out default branch of each submodule

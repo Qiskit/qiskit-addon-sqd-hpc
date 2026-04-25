@@ -1,3 +1,4 @@
 ---
 Checks: 'bugprone-*,performance-*,-performance-avoid-endl'
 WarningsAsErrors: '*'
+HeaderFilterRegex: '^include/.*'

@@ -19,14 +19,19 @@
 #include <utility>
 #include <vector>
 
-#include <boost/dynamic_bitset.hpp>
-
 #include "bitset_compat.hpp"
 
 using Qiskit::addon::sqd::recover_configurations;
 
+#if !QKA_SQD_DISABLE_EXCEPTIONS && !(_MSVC_LANG == 202002L)
+#define BITSET2_IF_AVAILABLE , Bitset2::bitset2<4>
+#else
+#define BITSET2_IF_AVAILABLE
+#endif
+
 TEST_CASE_TEMPLATE(
-    "Configuration recovery", BitstringType, std::bitset<4>, boost::dynamic_bitset<>
+    "Configuration recovery", BitstringType, std::bitset<4>,
+    boost::dynamic_bitset<> BITSET2_IF_AVAILABLE
 )
 {
     constexpr auto N = 4;
@@ -78,7 +83,8 @@ TEST_CASE("Configuration recovery tests from python addon")
         const std::vector<std::bitset<num_orbs>> bitstrings(1);
         const std::vector<double> probs(1, 1.0);
         std::array<std::vector<double>, 2> occs{
-            std::vector<double>(half_orbs, 1.0), std::vector<double>(half_orbs, 1.0)
+            std::vector<double>(half_orbs, 1.000001),
+            std::vector<double>(half_orbs, 1.0)
         };
         auto [mat_rec, probs_rec] =
             recover_configurations(bitstrings, probs, occs, {ham_r, ham_l}, rng);
@@ -96,7 +102,7 @@ TEST_CASE("Configuration recovery tests from python addon")
         const std::vector<std::bitset<num_orbs>> bitstrings(1, 0b1111);
         const std::vector<double> probs(1, 1.0);
         std::array<std::vector<double>, 2> occs{
-            std::vector<double>(half_orbs), std::vector<double>(half_orbs)
+            std::vector<double>(half_orbs, -1e6), std::vector<double>(half_orbs)
         };
         auto [mat_rec, probs_rec] =
             recover_configurations(bitstrings, probs, occs, {ham_r, ham_l}, rng);

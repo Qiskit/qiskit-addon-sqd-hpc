@@ -29,6 +29,7 @@
 #include <utility>
 #include <vector>
 
+#include "qiskit/addon/sqd/internal/concepts.hpp"
 #include "qiskit/addon/sqd/internal/exception-macros.hpp"
 #include "qiskit/addon/sqd/internal/sample-without-replacement.hpp"
 
@@ -100,7 +101,7 @@ mask_lower_n_bits(const BitstringType &bitstring, unsigned int n)
     return retval;
 }
 
-template <typename BitstringType, class RNGType>
+template <typename BitstringType, QKA_SQD_CONCEPT_RNG_(RNGType)>
 void _bipartite_bitstring_correcting(
     BitstringType &bitstring,
     const std::array<std::array<std::vector<double>, 2>, 2> &probs_table,
@@ -186,7 +187,9 @@ void _bipartite_bitstring_correcting(
 ///
 /// @return A refined `std::vector` of unique bitstrings and a parallel, updated
 ///     probability array.
-template <typename BitstringVectorType, typename WeightVectorType, class RNGType>
+template <
+    typename BitstringVectorType, typename WeightVectorType,
+    QKA_SQD_CONCEPT_RNG_(RNGType)>
 [[nodiscard]] std::pair<BitstringVectorType, WeightVectorType> recover_configurations(
     const BitstringVectorType &bitstrings, const WeightVectorType &probabilities,
     const std::array<std::vector<double>, 2> &avg_occupancies,
@@ -221,7 +224,7 @@ template <typename BitstringVectorType, typename WeightVectorType, class RNGType
         double density_s = static_cast<double>(num_elec[s]) / partition_size;
         // NOLINTEND(bugprone-narrowing-conversions)
         for (std::size_t i = 0; i < partition_size; ++i) {
-            const auto occ = avg_occupancies[s][i];
+            const auto occ = std::max(0.0, std::min(1.0, avg_occupancies[s][i]));
             probs_table[s][0][i] = internal::_p_flip_0_to_1(density_s, occ);
             probs_table[s][1][i] = internal::_p_flip_1_to_0(density_s, occ);
         }

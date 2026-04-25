@@ -40,3 +40,6 @@
 [submodule "deps/boost/mp11"]
 	path = deps/boost/mp11
 	url = https://github.com/boostorg/mp11.git
+[submodule "deps/bitset2"]
+	path = deps/bitset2
+	url = https://github.com/ClaasBontus/bitset2.git
