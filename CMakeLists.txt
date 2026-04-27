@@ -16,6 +16,7 @@ endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Enable warnings
 if (MSVC)
     add_compile_options(/W4)
 else()
@@ -27,6 +28,21 @@ include_directories(include)
 
 add_subdirectory(deps/doctest)
 add_subdirectory(deps/nanobench)
+
+# MPI and OpenMP
+find_package(MPI REQUIRED)
+find_package(OpenMP REQUIRED)
+
+# BLAS
+find_library(ACCELERATE_LIBRARY Accelerate)
+if (ACCELERATE_LIBRARY)
+    message(STATUS "Using Accelerate Framework")
+else()
+    set(BLA_VENDOR OpenBLAS)
+    find_package(BLAS REQUIRED)
+    include_directories(${BLAS_INCLUDE_DIRS})
+    link_libraries(${BLAS_LIBRARIES})
+endif()
 
 # boost::dynamic_bitset
 add_library(boost_dynamic_bitset INTERFACE)
@@ -50,18 +66,30 @@ target_include_directories(bitset2 INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/bitset2
 )
 
+add_library(sbd INTERFACE)
+target_include_directories(sbd SYSTEM INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/sbd/include
+)
+
 add_executable(sqd_tests
     test/doctest_main.cpp
     test/test_postselection.cpp
     test/test_subsampling.cpp
     test/test_configuration_recovery.cpp
     test/test_fermion.cpp
+    test/test_sbd_eigensolver.cpp
 )
-target_include_directories(sqd_tests PRIVATE deps/doctest/doctest)
+target_include_directories(sqd_tests PRIVATE
+    deps/doctest/doctest
+    ${MPI_C_INCLUDE_DIRS}
+)
 target_link_libraries(sqd_tests
     PRIVATE
     boost_dynamic_bitset
     bitset2
+    sbd
+    MPI::MPI_C
+    OpenMP::OpenMP_CXX
 )
 
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
@@ -78,4 +106,5 @@ target_link_libraries(sqd_benchmarks
     nanobench
     boost_dynamic_bitset
     bitset2
+    sbd
 )

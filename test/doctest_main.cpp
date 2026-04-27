@@ -10,9 +10,29 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
+#include <mpi.h>
 
+int main(int argc, char *argv[])
+{
+    // Initialize MPI
+    MPI_Init(&argc, &argv);
+
+    // Run the doctest tests without exiting
+    doctest::Context context(argc, argv);
+    context.setOption("no-run", false);
+    context.setOption("no-exitcode", true);
+    int result = context.run();
+
+    // Finalize MPI
+    MPI_Finalize();
+
+    // Now we can exit
+    return result;
+}
+
+// Special functions for when exceptions are disabled
 #if QKA_SQD_DISABLE_EXCEPTIONS
 #include <exception>
 #include <iostream>
