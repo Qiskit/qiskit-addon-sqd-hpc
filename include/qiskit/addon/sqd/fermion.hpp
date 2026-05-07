@@ -59,8 +59,9 @@ template <class BitstringVectorType>
 auto bitstrings_to_ci_strings_symmetrize_spin(
     const BitstringVectorType &bitstrings,
     std::optional<unsigned int> max_dimension = std::nullopt,
-    std::optional<std::reference_wrapper<const std::vector<
-        internal::HalfSize<typename BitstringVectorType::value_type>>>>
+    std::optional<std::reference_wrapper<
+        const std::vector<internal::HalfSize<typename BitstringVectorType::value_type>>
+    >>
         include_configurations = std::nullopt
 ) -> std::vector<internal::HalfSize<typename BitstringVectorType::value_type>>
 {
