@@ -116,7 +116,8 @@ void subsample(
 /// @return The subsampled bitstrings.
 template <
     typename BitstringVectorType, typename WeightVectorType,
-    QKA_SQD_CONCEPT_RNG_(RNGType)>
+    QKA_SQD_CONCEPT_RNG_(RNGType)
+>
 BitstringVectorType subsample(
     const BitstringVectorType &bitstrings, const WeightVectorType &weights,
     unsigned int samples_per_batch, RNGType &rng
@@ -189,7 +190,8 @@ void subsample_multiple_batches(
 /// @return The batches of subsampled bitstrings.
 template <
     typename BitstringVectorType, typename WeightVectorType,
-    QKA_SQD_CONCEPT_RNG_(RNGType)>
+    QKA_SQD_CONCEPT_RNG_(RNGType)
+>
 std::vector<BitstringVectorType> subsample_multiple_batches(
     const BitstringVectorType &bitstrings, const WeightVectorType &weights,
     unsigned int samples_per_batch, unsigned int num_batches, RNGType &rng
