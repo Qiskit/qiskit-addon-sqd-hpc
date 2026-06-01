@@ -18,6 +18,7 @@ Table of Contents
 .. toctree::
    :maxdepth: 2
 
+   Documentation Home <self>
    Compilation flags <compilation-flags>
    API Reference <apidocs/index>
    GitHub <https://github.com/Qiskit/qiskit-addon-sqd-hpc>
