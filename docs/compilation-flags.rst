@@ -33,4 +33,4 @@ Note that compiling this repository's test suite requires that you set ``#define
 Concepts (C++20 and later)
 --------------------------
 
-This library is designed to use C++ concepts if they are available (for example, if the code is compiled according to C++20 or a later version of the standard).  If possible, users are encouraged to use such a compiler when developing, as this will likely lead to better error messages from the compiler (such as when a template argument has an unexpected type).
+This library is designed to use C++ concepts if they are available (that is, if the code is compiled according to C++20 or a later version of the standard).  If possible, users are encouraged to use such a compiler when developing, as this will likely lead to better error messages from the compiler (such as when a template argument has an unexpected type).
