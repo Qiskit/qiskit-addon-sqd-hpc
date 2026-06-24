@@ -2,7 +2,7 @@
 Compilation flags
 ************************************
 
-This guide documents flags, such as ``#define``, that can be passed to the compiler when using this library.
+This guide describes the compiler flags supported by this library, including ``#define``-based macros.
 
 Disable exceptions
 -------------------------
