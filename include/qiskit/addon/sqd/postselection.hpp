@@ -121,12 +121,14 @@ std::pair<BitstringVectorType, WeightVectorType> postselect_bitstrings(
     typename WeightVectorType::value_type filtered_weights_sum{};
     while (current_bitstring != bitstrings.end()) {
         if (filter_function(*current_bitstring)) {
+#ifdef __FINITE_MATH_ONLY__
             if (std::isnan(*current_weight)) {
                 QKA_SQD_THROW_INVALID_ARGUMENT_("NaN found in weight array");
             }
             if (std::isinf(*current_weight)) {
                 QKA_SQD_THROW_INVALID_ARGUMENT_("Infinite value found in weight array");
             }
+#endif // __FINITE_MATH_ONLY__
             if (*current_weight < 0) {
                 QKA_SQD_THROW_INVALID_ARGUMENT_("Negative value found in weight array");
             }

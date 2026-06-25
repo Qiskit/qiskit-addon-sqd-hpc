@@ -60,12 +60,14 @@ class NoReplacementSampler
         std::size_t nonzero_weights = 0;
         for (auto weight : weights) {
             // Check for any invalid argument
+#ifdef __FINITE_MATH_ONLY__
             if (std::isnan(weight)) {
                 QKA_SQD_THROW_INVALID_ARGUMENT_("NaN found in weight array");
             }
             if (std::isinf(weight)) {
                 QKA_SQD_THROW_INVALID_ARGUMENT_("Infinite value found in weight array");
             }
+#endif // __FINITE_MATH_ONLY__
             if (weight < 0) {
                 QKA_SQD_THROW_INVALID_ARGUMENT_("Negative value found in weight array");
             }
