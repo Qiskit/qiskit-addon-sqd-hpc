@@ -4,7 +4,7 @@ Compilation flags
 
 This guide describes the compiler flags supported by this library, including ``#define``-based macros.
 
-Disable exceptions
+How to disable exceptions
 -------------------------
 
 To disable exceptions, the following flags must the passed to the compiler: ``-fno-exceptions -DQKA_SQD_DISABLE_EXCEPTIONS=1``
