@@ -101,7 +101,8 @@ class MatchesRightLeftHamming
 ///         bitstrings, weights, Qiskit::addon::sqd::MatchesRightLeftHamming(1, 2)
 ///     );
 template <
-    typename BitstringVectorType, typename WeightVectorType, typename CallableType>
+    typename BitstringVectorType, typename WeightVectorType, typename CallableType
+>
 std::pair<BitstringVectorType, WeightVectorType> postselect_bitstrings(
     const BitstringVectorType &bitstrings, const WeightVectorType &weights,
     CallableType filter_function
