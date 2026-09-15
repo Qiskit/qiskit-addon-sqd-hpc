@@ -232,6 +232,11 @@ template <
 
     using BitstringType = typename BitstringVectorType::value_type;
     std::unordered_map<BitstringType, double> corrected_dict;
+    // Reserve up front: the number of distinct corrected bitstrings is at most
+    // the number of inputs, and in the case of few collisions is close to it.
+    // This avoids incremental rehashing, which measurably dominates the dedup
+    // step when duplicates are rare.
+    corrected_dict.reserve(bitstrings.size());
 
     std::pair<std::vector<std::size_t>, std::vector<double>> scratch_vectors;
     for (std::size_t i = 0; i < bitstrings.size(); ++i) {
@@ -255,6 +260,8 @@ template <
 
     BitstringVectorType bitstrings_out;
     WeightVectorType freqs_out;
+    bitstrings_out.reserve(corrected_dict.size());
+    freqs_out.reserve(corrected_dict.size());
 
     for (const auto &[bitstring, freq] : corrected_dict) {
         bitstrings_out.emplace_back(bitstring);
