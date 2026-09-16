@@ -57,7 +57,7 @@ void _normalize(WeightVectorType &probs)
 }
 
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
-double _p_flip_0_to_1(double ratio_exp, double occ, double eps = 0.01)
+inline double _p_flip_0_to_1(double ratio_exp, double occ, double eps = 0.01)
 {
     // Occupancy is less than the naive expectation.
     // Flip 0s to 1 with small (<eps) probability in this case.
@@ -77,7 +77,7 @@ double _p_flip_0_to_1(double ratio_exp, double occ, double eps = 0.01)
     return occ * slope + intercept;
 }
 
-double _p_flip_1_to_0(double ratio_exp, double occ, double eps = 0.01)
+inline double _p_flip_1_to_0(double ratio_exp, double occ, double eps = 0.01)
 {
     return _p_flip_0_to_1(1.0 - ratio_exp, 1.0 - occ, eps);
 }
