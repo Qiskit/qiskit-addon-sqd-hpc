@@ -15,7 +15,7 @@ updates:
     directory: "/"
     labels: ["dependencies"]
     schedule:
-      interval: "weekly"
+      interval: "quarterly"
     groups:
       # The vendored Boost libraries are released together, so update them as
       # a single coordinated pull request rather than one per library.
