@@ -11,3 +11,14 @@ updates:
     versioning-strategy: increase
     schedule:
       interval: "monthly"
+  - package-ecosystem: "gitsubmodule"
+    directory: "/"
+    labels: ["dependencies"]
+    schedule:
+      interval: "quarterly"
+    groups:
+      # The vendored Boost libraries are released together, so update them as
+      # a single coordinated pull request rather than one per library.
+      boost:
+        patterns:
+          - "deps/boost/*"
