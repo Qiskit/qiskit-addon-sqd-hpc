@@ -30,6 +30,13 @@ Compiler flags are passed to ``cmake`` via the ``-DCMAKE_CXX_FLAGS`` option.  Fo
 
 Note that compiling this repository's test suite requires that ``#define DOCTEST_CONFIG_NO_EXCEPTIONS_BUT_WITH_ALL_ASSERTS`` be set, as exceptions must be disabled in the doctest framework as well as the SQD library.
 
+A note on ``-ffast-math``
+-------------------------
+
+This library relies on IEEE 754 floating-point semantics.  **The use of** ``-ffast-math`` **is not supported**, and the library will emit a compiler warning if it detects that ``__FAST_MATH__`` is defined.
+
+The related flag ``-ffinite-math-only`` (which is also implied by ``-ffast-math``) is a narrower assertion that no NaN or infinite values arise.  When it is in effect (i.e., when ``__FINITE_MATH_ONLY__`` is defined to a nonzero value), the library omits the now-redundant NaN and infinity checks but is otherwise expected to behave correctly.
+
 Concepts (C++20 and later)
 --------------------------
 
