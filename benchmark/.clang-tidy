@@ -1,5 +1,5 @@
 ---
-# Inherit the root configuration and disable checks that are inapplicable to the
+# Inherit the root configuration and disable a check that is inapplicable to the
 # benchmark suite (see test/.clang-tidy for rationale).
 InheritParentConfig: true
-Checks: '-bugprone-random-generator-seed,-bugprone-throwing-static-initialization'
+Checks: '-bugprone-random-generator-seed'
