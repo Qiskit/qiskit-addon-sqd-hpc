@@ -54,6 +54,7 @@ add_executable(sqd_tests
     test/test_postselection.cpp
     test/test_subsampling.cpp
     test/test_configuration_recovery.cpp
+    test/test_rng_substitutability.cpp
     test/test_headers_odr.cpp
     test/test_fermion.cpp
 )
