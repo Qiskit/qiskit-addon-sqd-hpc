@@ -40,7 +40,6 @@ target_include_directories(boost_dynamic_bitset INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/integer/include
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/move/include
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/mp11/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/static_assert/include
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/throw_exception/include
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/type_traits/include
 )
