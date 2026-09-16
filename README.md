@@ -102,3 +102,7 @@ We use [GitHub issues](https://github.com/Qiskit/qiskit-addon-sqd-hpc/issues) fo
 ## License
 
 [Apache License 2.0](LICENSE.txt)
+
+This repository also vendors third-party code under separate, Apache-compatible
+licenses in `include/qiskit/addon/sqd/internal/vendor/`.  Each vendored file
+retains its own license header.
