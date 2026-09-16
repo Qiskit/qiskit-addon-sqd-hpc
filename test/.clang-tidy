@@ -1,0 +1,9 @@
+---
+# Inherit the root configuration and disable checks that are inapplicable to
+# the test suite:
+#   - bugprone-random-generator-seed: tests deliberately default-seed their RNGs
+#     so that results are reproducible.
+#   - bugprone-throwing-static-initialization: this fires inside doctest's
+#     TEST_CASE_TEMPLATE registration macros, which we do not control.
+InheritParentConfig: true
+Checks: '-bugprone-random-generator-seed,-bugprone-throwing-static-initialization'
