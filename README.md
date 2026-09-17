@@ -106,4 +106,5 @@ We use [GitHub issues](https://github.com/Qiskit/qiskit-addon-sqd-hpc/issues) fo
 
 This repository also vendors third-party code under separate, Apache-compatible
 licenses in `include/qiskit/addon/sqd/internal/vendor/`.  Each vendored file
-retains its own license header.
+retains its own license header, and the bundled components are listed in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
