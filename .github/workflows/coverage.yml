@@ -61,6 +61,16 @@ jobs:
           --exclude deps
           --exclude benchmark
           --exclude-throw-branches
+      - name: Test the reporting script
+        run: python3 tools/test/test_untested_conditionals.py
+      - name: Report untested conditionals
+        if: always()
+        run: |
+          gcovr --json coverage.json --root . \
+            --exclude build --exclude deps --exclude benchmark \
+            --exclude-throw-branches
+          python3 tools/untested-conditionals.py coverage.json --markdown \
+            >> "$GITHUB_STEP_SUMMARY"
       - name: Upload report to Coveralls
         if: always()
         uses: coverallsapp/github-action@v2

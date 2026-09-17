@@ -203,3 +203,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Coverage reports
+coverage.json
+coveralls.json
+*.gcda
+*.gcno
