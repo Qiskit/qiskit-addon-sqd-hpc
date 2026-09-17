@@ -31,6 +31,12 @@ jobs:
           - os: ubuntu-latest
             compiler: g++
             cxx_standard: 23
+          # GCC 16 is currently the only standard library shipping
+          # std::philox_engine, so this is the row that actually exercises the
+          # C++26 counter-based RNG path.
+          - os: ubuntu-latest
+            compiler: g++-16
+            cxx_standard: 26
     steps:
       - uses: actions/checkout@v7
         with:
@@ -46,11 +52,18 @@ jobs:
           # https://apt.kitware.com/
           test -f /usr/share/doc/kitware-archive-keyring/copyright || wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
           echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ noble main' | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null
+      - name: Enable toolchain ppa for newer GCC (g++-16)
+        if: matrix.compiler == 'g++-16'
+        run: |
+          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y g++ clang cmake ninja-build
+          if [ "${{ matrix.compiler }}" = "g++-16" ]; then
+            sudo apt-get install -y g++-16
+          fi
       - name: Configure CMake
         run: >-
           cmake -S . -B build
