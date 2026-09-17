@@ -42,7 +42,7 @@ TEST_CASE_TEMPLATE(
     std::vector<std::bitset<6>> expected_bitstrings = {0b011010, 0b101100};
     std::vector<double> expected_weights = {0.25, 0.75};
     auto [new_bitstrings, new_weights] = Qiskit::addon::sqd::postselect_bitstrings(
-        bitstrings, weights, Qiskit::addon::sqd::MatchesRightLeftHamming(1, 2)
+        bitstrings, weights, Qiskit::addon::sqd::MatchesRightLeftHamming(1u, 2u)
     );
     CHECK(new_bitstrings == expected_bitstrings);
     CHECK(new_weights.size() == expected_weights.size());

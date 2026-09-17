@@ -57,7 +57,7 @@ void _normalize(WeightVectorType &probs)
 }
 
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
-double _p_flip_0_to_1(double ratio_exp, double occ, double eps = 0.01)
+inline double _p_flip_0_to_1(double ratio_exp, double occ, double eps = 0.01)
 {
     // Occupancy is less than the naive expectation.
     // Flip 0s to 1 with small (<eps) probability in this case.
@@ -77,7 +77,7 @@ double _p_flip_0_to_1(double ratio_exp, double occ, double eps = 0.01)
     return occ * slope + intercept;
 }
 
-double _p_flip_1_to_0(double ratio_exp, double occ, double eps = 0.01)
+inline double _p_flip_1_to_0(double ratio_exp, double occ, double eps = 0.01)
 {
     return _p_flip_0_to_1(1.0 - ratio_exp, 1.0 - occ, eps);
 }
@@ -232,6 +232,11 @@ template <
 
     using BitstringType = typename BitstringVectorType::value_type;
     std::unordered_map<BitstringType, double> corrected_dict;
+    // Reserve up front: the number of distinct corrected bitstrings is at most
+    // the number of inputs, and in the case of few collisions is close to it.
+    // This avoids incremental rehashing, which measurably dominates the dedup
+    // step when duplicates are rare.
+    corrected_dict.reserve(bitstrings.size());
 
     std::pair<std::vector<std::size_t>, std::vector<double>> scratch_vectors;
     for (std::size_t i = 0; i < bitstrings.size(); ++i) {
@@ -255,6 +260,8 @@ template <
 
     BitstringVectorType bitstrings_out;
     WeightVectorType freqs_out;
+    bitstrings_out.reserve(corrected_dict.size());
+    freqs_out.reserve(corrected_dict.size());
 
     for (const auto &[bitstring, freq] : corrected_dict) {
         bitstrings_out.emplace_back(bitstring);

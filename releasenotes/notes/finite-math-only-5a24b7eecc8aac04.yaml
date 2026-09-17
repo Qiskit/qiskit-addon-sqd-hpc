@@ -1,0 +1,12 @@
+---
+other:
+  - |
+    When the compiler asserts finite-math-only semantics (i.e., when
+    ``__FINITE_MATH_ONLY__`` is defined to a nonzero value, as it is under
+    ``-ffinite-math-only`` and ``-ffast-math``), the library now omits its
+    now-redundant checks for NaN and infinite weight values.
+  - |
+    The library will emit a compiler warning if ``__FAST_MATH__`` is defined,
+    as the use of ``-ffast-math`` breaks the IEEE 754 semantics that the
+    library relies upon and is not supported.  See :doc:`compilation-flags`
+    for details.

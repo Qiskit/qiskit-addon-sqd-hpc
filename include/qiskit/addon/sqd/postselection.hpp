@@ -20,6 +20,7 @@
 #include <utility>
 
 #include "qiskit/addon/sqd/internal/exception-macros.hpp"
+#include "qiskit/addon/sqd/internal/finite-math.hpp"
 
 // QKA_SQD_IF_UNLIKELY_ private macro
 #if __cplusplus >= 202002L
@@ -72,8 +73,8 @@ class MatchesRightLeftHamming
         {
             QKA_SQD_THROW_INVALID_ARGUMENT_("`bitstring` must have even length");
         }
-        auto left_count = (bitstring >> (bitstring.size() / 2)).count();
-        auto right_count = bitstring.count() - left_count;
+        const auto left_count = (bitstring >> (bitstring.size() / 2)).count();
+        decltype(left_count) right_count = bitstring.count() - left_count;
         return right_count == right_target && left_count == left_target;
     }
 };
@@ -121,12 +122,14 @@ std::pair<BitstringVectorType, WeightVectorType> postselect_bitstrings(
     typename WeightVectorType::value_type filtered_weights_sum{};
     while (current_bitstring != bitstrings.end()) {
         if (filter_function(*current_bitstring)) {
+#if !QKA_SQD_FINITE_MATH_ONLY
             if (std::isnan(*current_weight)) {
                 QKA_SQD_THROW_INVALID_ARGUMENT_("NaN found in weight array");
             }
             if (std::isinf(*current_weight)) {
                 QKA_SQD_THROW_INVALID_ARGUMENT_("Infinite value found in weight array");
             }
+#endif // !QKA_SQD_FINITE_MATH_ONLY
             if (*current_weight < 0) {
                 QKA_SQD_THROW_INVALID_ARGUMENT_("Negative value found in weight array");
             }

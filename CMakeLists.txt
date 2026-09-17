@@ -16,6 +16,13 @@ endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if (MSVC)
+    add_compile_options(/W4)
+else()
+    # For GCC/Clang
+    add_compile_options(-Wall -Wextra)
+endif()
+
 include_directories(include)
 
 add_subdirectory(deps/doctest)
@@ -33,9 +40,13 @@ target_include_directories(boost_dynamic_bitset INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/integer/include
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/move/include
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/mp11/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/static_assert/include
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/throw_exception/include
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/boost/type_traits/include
+)
+
+add_library(bitset2 INTERFACE)
+target_include_directories(bitset2 INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/bitset2
 )
 
 add_executable(sqd_tests
@@ -43,11 +54,15 @@ add_executable(sqd_tests
     test/test_postselection.cpp
     test/test_subsampling.cpp
     test/test_configuration_recovery.cpp
+    test/test_rng_substitutability.cpp
+    test/test_headers_odr.cpp
+    test/test_fermion.cpp
 )
 target_include_directories(sqd_tests PRIVATE deps/doctest/doctest)
 target_link_libraries(sqd_tests
     PRIVATE
     boost_dynamic_bitset
+    bitset2
 )
 
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
@@ -63,4 +78,5 @@ target_link_libraries(sqd_benchmarks
     PRIVATE
     nanobench
     boost_dynamic_bitset
+    bitset2
 )

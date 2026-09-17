@@ -13,12 +13,14 @@
 #ifndef QISKIT_ADDON_SQD_INTERNAL_SAMPLE_WITHOUT_REPLACEMENT_HPP_
 #define QISKIT_ADDON_SQD_INTERNAL_SAMPLE_WITHOUT_REPLACEMENT_HPP_
 
+#include <cmath>
 #include <cstddef>
 #include <random>
 #include <vector>
 
 #include "qiskit/addon/sqd/internal/concepts.hpp"
 #include "qiskit/addon/sqd/internal/exception-macros.hpp"
+#include "qiskit/addon/sqd/internal/finite-math.hpp"
 
 namespace Qiskit
 {
@@ -60,12 +62,14 @@ class NoReplacementSampler
         std::size_t nonzero_weights = 0;
         for (auto weight : weights) {
             // Check for any invalid argument
+#if !QKA_SQD_FINITE_MATH_ONLY
             if (std::isnan(weight)) {
                 QKA_SQD_THROW_INVALID_ARGUMENT_("NaN found in weight array");
             }
             if (std::isinf(weight)) {
                 QKA_SQD_THROW_INVALID_ARGUMENT_("Infinite value found in weight array");
             }
+#endif // !QKA_SQD_FINITE_MATH_ONLY
             if (weight < 0) {
                 QKA_SQD_THROW_INVALID_ARGUMENT_("Negative value found in weight array");
             }

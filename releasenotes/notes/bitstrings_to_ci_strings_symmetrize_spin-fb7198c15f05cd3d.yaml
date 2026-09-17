@@ -1,0 +1,7 @@
+---
+features:
+  - |
+    The ``bitstrings_to_ci_strings_symmetrize_spin`` function has been
+    added, which allows one to obtain a collection of CI strings (with
+    alpha and beta determinants symmetrized) from a collection of
+    bitstrings.
