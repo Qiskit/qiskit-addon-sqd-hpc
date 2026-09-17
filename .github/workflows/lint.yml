@@ -16,12 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: true
           fetch-depth: 0
       - name: Set up Python 3.13
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.13'
       - name: Enable LLVM ppa
@@ -29,15 +29,15 @@ jobs:
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
           cat <<EOF | sudo tee -a /etc/apt/sources.list
-          deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main
-          deb-src http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main
+          deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-22 main
+          deb-src http://apt.llvm.org/jammy/ llvm-toolchain-jammy-22 main
           EOF
       - name: Install via apt-get
         run: |
           sudo apt-get update
-          sudo apt-get install -y fd-find clang-tidy-21 clang-format-21
-          sudo ln -fs clang-format-21 /usr/bin/clang-format
-          sudo ln -fs clang-tidy-21 /usr/bin/clang-tidy
+          sudo apt-get install -y fd-find clang-tidy-22 clang-format-22
+          sudo ln -fs clang-format-22 /usr/bin/clang-format
+          sudo ln -fs clang-tidy-22 /usr/bin/clang-tidy
           sudo ln -fs /usr/bin/fdfind /usr/local/bin/fd
       - name: Install tox
         run: |

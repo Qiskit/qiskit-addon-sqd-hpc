@@ -1,0 +1,7 @@
+---
+# Inherit the root configuration and disable a check that is inapplicable to the
+# test suite:
+#   - bugprone-random-generator-seed: tests deliberately default-seed their RNGs
+#     so that results are reproducible.
+InheritParentConfig: true
+Checks: '-bugprone-random-generator-seed'
