@@ -25,11 +25,11 @@
 #include <optional>
 #include <random>
 #include <sstream>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "qiskit/addon/sqd/internal/concepts.hpp"
+#include "qiskit/addon/sqd/internal/dense_map.hpp"
 #include "qiskit/addon/sqd/internal/exception-macros.hpp"
 #include "qiskit/addon/sqd/internal/sample-without-replacement.hpp"
 
@@ -232,11 +232,14 @@ template <
     }
 
     using BitstringType = typename BitstringVectorType::value_type;
-    std::unordered_map<BitstringType, double> corrected_dict;
+    // A flat hash map (see internal/dense_map.hpp) removes duplicates
+    // considerably faster than std::unordered_map, especially when duplicates
+    // are rare -- the common case, since correction seldom maps distinct inputs
+    // to the same output -- because it avoids a heap allocation per distinct
+    // key and keeps entries contiguous.
+    internal::dense_map<BitstringType, double> corrected_dict;
     // Reserve up front: the number of distinct corrected bitstrings is at most
     // the number of inputs, and in the case of few collisions is close to it.
-    // This avoids incremental rehashing, which measurably dominates the dedup
-    // step when duplicates are rare.
     corrected_dict.reserve(bitstrings.size());
 
     std::pair<std::vector<std::size_t>, std::vector<double>> scratch_vectors;
