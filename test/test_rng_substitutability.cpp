@@ -53,6 +53,12 @@ class MinimalURBG
     explicit MinimalURBG(std::uint64_t seed) : state_(seed)
     {
     }
+    // A seed() so this exercises the OpenMP per-thread path too; realistic
+    // engines all provide one.
+    void seed(result_type s)
+    {
+        state_ = s;
+    }
     static constexpr result_type min()
     {
         return 0;
