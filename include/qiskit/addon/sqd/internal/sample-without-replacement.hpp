@@ -40,27 +40,67 @@ class NoReplacementSampler
 {
   private:
     // Sample from the indices corresponding to the `weights`, without
-    // replacement.  In order to do so, we will make a copy of the weights
-    // vector.  Each time a sample is drawn, we change the corresponding weight
-    // to zero.  However, we continue to use the same
-    // std::discrete_distribution in order to avoid paying the O(N) cost
-    // required to create the std::discrete_distribution for each sample.
-    // However, any time we *do* draw indices that have been drawn before
-    // on `num_retries` consecutive tries, we re-create the distribution, under
-    // the assumption that it has grown too dense with indices that have
-    // been sampled already.
-    static constexpr int num_retries = 2;
-    std::vector<typename WeightVectorType::value_type> working_weights;
-    std::discrete_distribution<> dist;
+    // replacement, under the sequential scheme: draw index i with probability
+    // w_i / (sum of remaining weights), remove it, renormalize, and repeat.
+    //
+    // A Fenwick tree (binary indexed tree) over the weights supports both a
+    // prefix-sum query and a point update in O(log n), and it can locate the
+    // index for a target cumulative weight by descending the tree, also in
+    // O(log n).  Each draw therefore costs O(log n) with no rejection and no
+    // rebuilding: draw u in [0, total), find the index whose cumulative weight
+    // interval contains u, then subtract that weight from the tree.
+    using WeightType = typename WeightVectorType::value_type;
+
+    // tree_[i] (1-based) holds the sum of weights over the range of leaves that
+    // node i is responsible for.  tree_[0] is unused.
+    std::vector<WeightType> tree_;
+    // The current per-index weight, kept alongside the tree so that removing a
+    // drawn index subtracts its exact original value.  Recovering the weight
+    // from a difference of two Fenwick prefix sums would be subject to
+    // floating-point cancellation, which could leave a tiny residual weight at a
+    // supposedly-removed index (allowing it to be drawn again).
+    std::vector<WeightType> weights_;
+    WeightType total_weight_;
     std::size_t remaining_nonzero_weights;
+
+    // Add `delta` to the weight at 0-based index `i`.
+    void update(std::size_t i, WeightType delta)
+    {
+        for (std::size_t j = i + 1; j < tree_.size(); j += j & (~j + 1)) {
+            tree_[j] += delta;
+        }
+    }
+
+    // Return the smallest 0-based index j such that the cumulative weight
+    // through j is strictly greater than `target` (0 <= target < total).  This
+    // is the standard O(log n) Fenwick "find by cumulative frequency" descent.
+    std::size_t find_by_cumulative_weight(WeightType target) const
+    {
+        std::size_t pos = 0;
+        // Largest power of two <= n.
+        std::size_t step = 1;
+        while (step << 1 < tree_.size()) {
+            step <<= 1;
+        }
+        for (; step != 0; step >>= 1) {
+            const std::size_t next = pos + step;
+            if (next < tree_.size() && tree_[next] <= target) {
+                pos = next;
+                target -= tree_[next];
+            }
+        }
+        return pos; // 0-based index of the selected leaf
+    }
 
   public:
     /// Constructor
     explicit NoReplacementSampler(const WeightVectorType &weights)
-      : working_weights(weights), dist(working_weights.begin(), working_weights.end())
+      : tree_(weights.size() + 1, WeightType{}), weights_(weights.size(), WeightType{}),
+        total_weight_(WeightType{})
     {
         std::size_t nonzero_weights = 0;
-        for (auto weight : weights) {
+        for (std::size_t i = 0; i < weights.size(); ++i) {
+            const auto weight = weights[i];
             // Check for any invalid argument
 #if !QKA_SQD_FINITE_MATH_ONLY
             if (std::isnan(weight)) {
@@ -77,6 +117,9 @@ class NoReplacementSampler
             // Tally all nonzero weights
             if (weight > 0) {
                 ++nonzero_weights;
+                weights_[i] = weight;
+                update(i, weight);
+                total_weight_ += weight;
             }
         }
         remaining_nonzero_weights = nonzero_weights;
@@ -103,26 +146,18 @@ class NoReplacementSampler
         }
         --remaining_nonzero_weights;
 
-        for (;;) {
-            auto remaining_retries = num_retries;
-            // Draw up to `num_retries` samples to find one with nonzero
-            // `working_weight`
-            do {
-                const auto idx = dist(rng);
-                if (working_weights[idx] != 0) {
-                    // We found a sample that has not been sampled yet.  Select it, and
-                    // mark it as ineligible for selection again.
-                    working_weights[idx] = 0;
-                    return idx;
-                }
-                --remaining_retries;
-            } while (remaining_retries != 0);
+        // Draw a target in [0, total_weight_) and locate the index whose
+        // cumulative-weight interval contains it.
+        std::uniform_real_distribution<WeightType> dist(WeightType{}, total_weight_);
+        const std::size_t idx = find_by_cumulative_weight(dist(rng));
 
-            // We performed the loop `num_retries` times, but obtained only
-            // samples that we had drawn previously.  So we reconstruct the
-            // distribution in order to draw more samples without replacement.
-            dist.param({working_weights.begin(), working_weights.end()});
-        }
+        // Remove the selected index so it cannot be drawn again, subtracting its
+        // exact stored weight (see weights_).
+        const WeightType selected_weight = weights_[idx];
+        update(idx, -selected_weight);
+        weights_[idx] = WeightType{};
+        total_weight_ -= selected_weight;
+        return idx;
     }
 };
 

@@ -73,6 +73,7 @@ add_executable(sqd_benchmarks
     benchmark/benchmark_main.cpp
     benchmark/benchmark_subsampling.cpp
     benchmark/benchmark_configuration_recovery.cpp
+    benchmark/benchmark_sample_without_replacement.cpp
 )
 target_include_directories(sqd_benchmarks PRIVATE deps/nanobench/src/include)
 target_link_libraries(sqd_benchmarks
