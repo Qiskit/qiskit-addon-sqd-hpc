@@ -16,9 +16,6 @@
 /// Tools for studying fermionic systems
 
 #include <algorithm>
-#include <array>
-#include <climits>
-#include <functional>
 #include <optional>
 #include <unordered_map>
 #include <utility>

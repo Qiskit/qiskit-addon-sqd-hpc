@@ -13,10 +13,8 @@
 #ifndef QISKIT_ADDON_SQD_POSTSELECTION_HPP_
 #define QISKIT_ADDON_SQD_POSTSELECTION_HPP_
 
-#include <cassert>
 #include <cmath>
 #include <cstdint>
-#include <stdexcept>
 #include <utility>
 
 #include "qiskit/addon/sqd/internal/exception-macros.hpp"
@@ -41,7 +39,7 @@ namespace sqd
 {
 
 /// Functor which returns `true` if a bitstring has a predetermined Hamming weight.
-template <typename UnsignedType = uint32_t>
+template <typename UnsignedType = std::uint32_t>
 class MatchesRightLeftHamming
 {
     UnsignedType right_target, left_target;
