@@ -189,7 +189,8 @@ void _bipartite_bitstring_correcting(
 ///     probability array.
 template <
     typename BitstringVectorType, typename WeightVectorType,
-    QKA_SQD_CONCEPT_RNG_(RNGType)>
+    QKA_SQD_CONCEPT_RNG_(RNGType)
+>
 [[nodiscard]] std::pair<BitstringVectorType, WeightVectorType> recover_configurations(
     const BitstringVectorType &bitstrings, const WeightVectorType &probabilities,
     const std::array<std::vector<double>, 2> &avg_occupancies,

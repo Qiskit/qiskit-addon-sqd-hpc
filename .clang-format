@@ -118,6 +118,7 @@ BreakBeforeBinaryOperators: None
 BreakBeforeConceptDeclarations: Always
 BreakBeforeBraces: Linux
 BreakBeforeInlineASMColon: OnlyMultiline
+BreakBeforeTemplateCloser: true
 BreakBeforeTernaryOperators: true
 BreakBinaryOperations: Never
 BreakConstructorInitializers: BeforeColon
