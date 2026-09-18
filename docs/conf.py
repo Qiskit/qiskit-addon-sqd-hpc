@@ -46,6 +46,9 @@ exclude_patterns = [
     "_pytorch_build",
     "**.ipynb_checkpoints",
     "jupyter_execute",
+    # One-off engineering investigations kept for the record, not part of the
+    # rendered documentation.
+    "investigations",
 ]
 
 extensions = [
