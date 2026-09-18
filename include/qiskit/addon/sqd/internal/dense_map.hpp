@@ -39,7 +39,8 @@ namespace internal
 /// configuration-recovery dedup step.
 template <
     typename Key, typename T, typename Hash = vendored::unordered_dense::hash<Key>,
-    typename KeyEqual = std::equal_to<Key>>
+    typename KeyEqual = std::equal_to<Key>
+>
 using dense_map = vendored::unordered_dense::map<Key, T, Hash, KeyEqual>;
 
 } // namespace internal
