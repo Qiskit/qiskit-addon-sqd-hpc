@@ -15,6 +15,7 @@
 
 #include <array>
 #include <bitset>
+#include <cmath>
 #include <random>
 #include <utility>
 #include <vector>
@@ -129,6 +130,32 @@ TEST_CASE("Configuration recovery tests from python addon")
         CHECK(mat_rec[0] == 0b0100);
         CHECK(probs_rec.size() == 1);
         CHECK(probs_rec[0] == 1.0);
+    }
+    SUBCASE("Sum of probabilities is zero.")
+    {
+        // Regression test for
+        // https://github.com/Qiskit/qiskit-addon-sqd-hpc/issues/33, mirroring
+        // https://github.com/Qiskit/qiskit-addon-sqd/issues/274.  When every
+        // input probability (and hence the sum of the recovered
+        // probabilities) is zero, normalization must not produce NaNs via
+        // division by zero.
+        constexpr auto num_orbs = 4;
+        constexpr auto half_orbs = num_orbs / 2;
+        constexpr auto ham_r = 2;
+        constexpr auto ham_l = 2;
+        const std::vector<std::bitset<num_orbs>> bitstrings{0b0000, 0b1111};
+        const std::vector<double> probs(2, 0.0);
+        std::array<std::vector<double>, 2> occs{
+            std::vector<double>(half_orbs, 1.0), std::vector<double>(half_orbs, 1.0)
+        };
+        auto [mat_rec, probs_rec] =
+            recover_configurations(bitstrings, probs, occs, {ham_r, ham_l}, rng);
+        REQUIRE(mat_rec.size() == probs_rec.size());
+        CHECK(mat_rec.size() >= 1);
+        for (const auto &prob : probs_rec) {
+            CHECK_FALSE(std::isnan(prob));
+            CHECK(prob == 0.0);
+        }
     }
     SUBCASE("Bad Hamming right")
     {
