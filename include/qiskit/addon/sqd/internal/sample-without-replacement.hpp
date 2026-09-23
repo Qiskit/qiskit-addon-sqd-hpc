@@ -13,6 +13,7 @@
 #ifndef QISKIT_ADDON_SQD_INTERNAL_SAMPLE_WITHOUT_REPLACEMENT_HPP_
 #define QISKIT_ADDON_SQD_INTERNAL_SAMPLE_WITHOUT_REPLACEMENT_HPP_
 
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <random>
@@ -74,6 +75,22 @@ class NoReplacementSampler
     // Return the smallest 0-based index j such that the cumulative weight
     // through j is strictly greater than `target` (0 <= target < total).  This
     // is the standard O(log n) Fenwick "find by cumulative frequency" descent.
+    //
+    // The descent itself is exact integer-index arithmetic over the node sums,
+    // but those sums are accumulated floating-point values and so are subject to
+    // cancellation: adding a small weight to a much larger one and later
+    // subtracting the larger one back out does not restore the small one
+    // (1e-12 + 1e12 - 1e12 == 0).  Once every remaining node sum has cancelled
+    // to zero, `target` compares greater-or-equal at every step, the descent
+    // takes all of them, and `pos` lands one past the last leaf.
+    //
+    // The comparison must stay untouched -- skipping a step without subtracting
+    // that node's sum would corrupt the search and bias the distribution -- so
+    // the correction happens here, after the descent: clamp into range, then
+    // advance to a still-drawable leaf.  operator() has already established that
+    // one exists.  This only engages once the weights involved have cancelled
+    // away, i.e. when the sums can no longer express a meaningful preference
+    // among what is left; the ordinary path is unaffected.
     std::size_t find_by_cumulative_weight(WeightType target) const
     {
         std::size_t pos = 0;
@@ -89,7 +106,27 @@ class NoReplacementSampler
                 target -= tree_[next];
             }
         }
-        return pos; // 0-based index of the selected leaf
+        if (pos >= weights_.size()) {
+            pos = weights_.size() - 1;
+        }
+        if (weights_[pos] > WeightType{}) {
+            return pos;
+        }
+        // `pos` landed on an already-drawn leaf, so the sums have cancelled and
+        // can no longer express a preference among what is left.  Scan outward
+        // for the nearest drawable leaf; operator() has established that one
+        // exists, so this always finds it.
+        for (std::size_t offset = 1; offset < weights_.size(); ++offset) {
+            if (pos + offset < weights_.size() &&
+                weights_[pos + offset] > WeightType{}) {
+                return pos + offset;
+            }
+            if (pos >= offset && weights_[pos - offset] > WeightType{}) {
+                return pos - offset;
+            }
+        }
+        assert(false && "operator() guarantees a drawable leaf exists");
+        return pos;
     }
 
   public:
@@ -148,7 +185,16 @@ class NoReplacementSampler
 
         // Draw a target in [0, total_weight_) and locate the index whose
         // cumulative-weight interval contains it.
-        std::uniform_real_distribution<WeightType> dist(WeightType{}, total_weight_);
+        //
+        // total_weight_ is an accumulated sum and cancels like the tree nodes, so
+        // once the large weights have been drawn it can reach zero or even go
+        // negative (1e16 + 1 + 1 rounds to 1e16, so subtracting 1e16 and 1 back
+        // out leaves -1).  uniform_real_distribution requires a <= b, so clamp
+        // the upper bound; find_by_cumulative_weight then resolves the degenerate
+        // target onto a drawable leaf.
+        const WeightType upper =
+            total_weight_ > WeightType{} ? total_weight_ : WeightType{};
+        std::uniform_real_distribution<WeightType> dist(WeightType{}, upper);
         const std::size_t idx = find_by_cumulative_weight(dist(rng));
 
         // Remove the selected index so it cannot be drawn again, subtracting its
