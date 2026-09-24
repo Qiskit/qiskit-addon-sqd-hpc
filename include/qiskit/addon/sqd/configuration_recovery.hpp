@@ -28,7 +28,12 @@
 #include "qiskit/addon/sqd/internal/concepts.hpp"
 #include "qiskit/addon/sqd/internal/dense_map.hpp"
 #include "qiskit/addon/sqd/internal/exception-macros.hpp"
+#include "qiskit/addon/sqd/internal/parallel-rng.hpp"
 #include "qiskit/addon/sqd/internal/sample-without-replacement.hpp"
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace Qiskit
 {
@@ -167,6 +172,22 @@ void _bipartite_bitstring_correcting(
 /// Refine bitstrings based on average orbital occupancy and a target
 /// Hamming weight.
 ///
+/// When compiled with OpenMP enabled, the per-bitstring correction runs in
+/// parallel.  In that case `rng` is used to seed independent per-work-item
+/// random streams rather than being drawn from sequentially, so the numerical
+/// output differs from a purely sequential run.  The degree of reproducibility
+/// depends on the generator:
+///
+///   - A counter-based engine (one with `set_counter`, such as the C++26
+///     `std::philox_engine`) is keyed by bitstring index, so the result --
+///     including the order of the returned vectors -- is identical for any
+///     number of threads.
+///   - Any other engine must be seedable (have `seed()`); each thread then uses
+///     an independently seeded copy.  Results are valid but depend on the
+///     thread count.  A generator that is neither counter-based nor seedable is
+///     rejected at compile time under OpenMP (it remains usable in a serial
+///     build).
+///
 /// @param[in] bitstrings A container (e.g., `std::vector`) of bitstrings.
 /// @param[in] probabilities A 1D array specifying a probability distribution over
 ///     the bitstrings.  Must contain the same number of elements as `bitstrings`.
@@ -229,44 +250,109 @@ template <
     }
 
     using BitstringType = typename BitstringVectorType::value_type;
-    // A flat hash map (see internal/dense_map.hpp) removes duplicates
-    // considerably faster than std::unordered_map, especially when duplicates
-    // are rare -- the common case, since correction seldom maps distinct inputs
-    // to the same output -- because it avoids a heap allocation per distinct
-    // key and keeps entries contiguous.
-    internal::dense_map<BitstringType, double> corrected_dict;
-    // Reserve up front: the number of distinct corrected bitstrings is at most
-    // the number of inputs, and in the case of few collisions is close to it.
-    corrected_dict.reserve(bitstrings.size());
 
-    std::pair<std::vector<std::size_t>, std::vector<double>> scratch_vectors;
-    for (std::size_t i = 0; i < bitstrings.size(); ++i) {
-        const auto &bitstring = bitstrings[i];
+    // Validate bitstring lengths up front, so the correction loop below (which
+    // may run in parallel) needs no exception-throwing control flow.
+    for (const auto &bitstring : bitstrings) {
         if (bitstring.size() != 2 * partition_size) {
             QKA_SQD_THROW_INVALID_ARGUMENT_(
                 "Bitstring length must be twice the number of orbitals."
             );
         }
+    }
 
-        // Correct the bitstring
-        auto corrected_bitstring = bitstring;
+    // Correct every bitstring into a position-indexed array.  Duplicate removal
+    // is done afterwards, on a single thread, in input order -- so the result is
+    // independent of how the correction loop was scheduled.
+    std::vector<BitstringType> corrected(bitstrings.size());
+
+#ifdef _OPENMP
+    // Parallel correction.  Each iteration touches only its own slot and its own
+    // thread-local scratch and generator, so there is no contention.  With a
+    // counter-based RNG the per-item stream is keyed by index, making the result
+    // bit-for-bit independent of the thread count; with an ordinary RNG each
+    // thread gets an independently-seeded copy (valid, but thread-count
+    // dependent).  See internal/parallel-rng.hpp.
+    static_assert(
+        internal::is_counter_based_rng_v<RNGType> ||
+            internal::is_seedable_rng_v<RNGType>,
+        "Under OpenMP, recover_configurations requires an RNG that is either "
+        "counter-based (has set_counter, e.g. std::philox_engine) or seedable "
+        "(has seed()); a concept-only uniform_random_bit_generator is supported "
+        "only in the serial (non-OpenMP) build."
+    );
+    // Derive a 64-bit base seed from the caller's generator.  Two draws XORed
+    // (the second shifted into the high half) so the seed has full 64-bit
+    // entropy even when the engine's result_type is only 32 bits wide.
+    const std::uint64_t base_seed =
+        static_cast<std::uint64_t>(rng()) ^ (static_cast<std::uint64_t>(rng()) << 32);
+#pragma omp parallel
+    {
+        std::pair<std::vector<std::size_t>, std::vector<double>> scratch;
+        // Per-thread generator.  The counter-based branch re-seeds and re-keys
+        // this below (so its initial copied state is discarded); the ordinary
+        // branch keeps the copy and just re-seeds it once per thread here.
+        RNGType thread_rng = rng;
+        if constexpr (!internal::is_counter_based_rng_v<RNGType>) {
+            // Give each thread a well-separated seed.  The multiplier is the odd
+            // integer nearest 2^64 / golden-ratio, whose multiples are spread
+            // evenly across the 64-bit range, so consecutive thread ids map to
+            // far-apart seeds rather than adjacent ones.
+            thread_rng.seed(
+                static_cast<typename RNGType::result_type>(
+                    base_seed +
+                    0x9e3779b97f4a7c15ULL *
+                        (static_cast<std::uint64_t>(omp_get_thread_num()) + 1)
+                )
+            );
+        }
+#pragma omp for
+        for (std::size_t i = 0; i < bitstrings.size(); ++i) {
+            if constexpr (internal::is_counter_based_rng_v<RNGType>) {
+                internal::key_counter_based_rng(thread_rng, base_seed, i);
+            }
+            BitstringType corrected_bitstring = bitstrings[i];
+            internal::_bipartite_bitstring_correcting(
+                corrected_bitstring, probs_table, num_elec, scratch, thread_rng
+            );
+            corrected[i] = std::move(corrected_bitstring);
+        }
+    }
+#else
+    std::pair<std::vector<std::size_t>, std::vector<double>> scratch;
+    for (std::size_t i = 0; i < bitstrings.size(); ++i) {
+        BitstringType corrected_bitstring = bitstrings[i];
         internal::_bipartite_bitstring_correcting(
-            corrected_bitstring, probs_table, num_elec, scratch_vectors, rng
+            corrected_bitstring, probs_table, num_elec, scratch, rng
         );
+        corrected[i] = std::move(corrected_bitstring);
+    }
+#endif
 
-        // Use the unordered_map to remove duplicates
-        const auto freq = probabilities[i];
-        corrected_dict[corrected_bitstring] += freq;
+    // Remove duplicates.  Accumulate frequencies keyed by corrected bitstring,
+    // then emit each distinct bitstring once in first-seen (input) order.  A
+    // flat hash map (see internal/dense_map.hpp) is considerably faster than
+    // std::unordered_map here, especially when duplicates are rare -- the common
+    // case, since correction seldom maps distinct inputs to the same output.
+    // Reserve up front: the number of distinct bitstrings is at most the number
+    // of inputs, and close to it when collisions are rare.
+    internal::dense_map<BitstringType, double> corrected_dict;
+    corrected_dict.reserve(corrected.size());
+    for (std::size_t i = 0; i < corrected.size(); ++i) {
+        corrected_dict[corrected[i]] += probabilities[i];
     }
 
     BitstringVectorType bitstrings_out;
     WeightVectorType freqs_out;
     bitstrings_out.reserve(corrected_dict.size());
     freqs_out.reserve(corrected_dict.size());
-
-    for (const auto &[bitstring, freq] : corrected_dict) {
-        bitstrings_out.emplace_back(bitstring);
-        freqs_out.push_back(freq);
+    for (std::size_t i = 0; i < corrected.size(); ++i) {
+        auto it = corrected_dict.find(corrected[i]);
+        if (it != corrected_dict.end()) {
+            bitstrings_out.emplace_back(it->first);
+            freqs_out.push_back(it->second);
+            corrected_dict.erase(it); // ensures each distinct bitstring emitted once
+        }
     }
 
     // Normalize the frequencies

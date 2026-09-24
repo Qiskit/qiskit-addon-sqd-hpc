@@ -177,3 +177,45 @@ TEST_CASE_TEMPLATE(
     Qiskit::addon::sqd::internal::mask_lower_n_bits_inplace(bs, 3);
     CHECK(bs == bs_expected);
 }
+
+#if defined(_OPENMP) && defined(__cpp_lib_philox_engine)
+
+#include <omp.h>
+
+// With a counter-based RNG, the parallel correction keys each bitstring's random
+// stream by its index, so the result -- including the order of the returned
+// vectors -- must be identical no matter how many threads run the loop.
+TEST_CASE("recover_configurations is thread-count independent with a counter-based RNG")
+{
+    constexpr unsigned int num_orbs = 8;
+    constexpr unsigned int half = num_orbs / 2;
+
+    // A non-trivial workload: many bitstrings needing correction.
+    std::vector<std::bitset<num_orbs>> bitstrings;
+    std::vector<double> probs;
+    for (unsigned int i = 0; i < 500; ++i) {
+        bitstrings.emplace_back((i * 37u + 5u) & 0xffu);
+        probs.push_back(1.0 + (i % 7));
+    }
+    std::array<std::vector<double>, 2> occs{
+        std::vector<double>(half, 0.3), std::vector<double>(half, 0.7)
+    };
+
+    // Single-threaded reference.
+    omp_set_num_threads(1);
+    std::philox4x64 ref_rng(2024u);
+    const auto reference =
+        recover_configurations(bitstrings, probs, occs, {2, 2}, ref_rng);
+
+    // The result must match at every thread count, element for element.
+    for (int nthreads : {2, 4, 8}) {
+        omp_set_num_threads(nthreads);
+        std::philox4x64 rng(2024u);
+        const auto result =
+            recover_configurations(bitstrings, probs, occs, {2, 2}, rng);
+        CHECK(result.first == reference.first);   // same bitstrings, same order
+        CHECK(result.second == reference.second); // same frequencies, same order
+    }
+}
+
+#endif // _OPENMP && __cpp_lib_philox_engine
