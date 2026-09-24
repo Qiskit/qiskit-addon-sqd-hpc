@@ -177,9 +177,11 @@ class NoReplacementSampler
     std::size_t operator()(RNGType &rng)
     {
         if (remaining_nonzero_weights == 0) {
-            QKA_SQD_THROW_RUNTIME_ERROR_(
-                "Cannot draw more samples than number of nonzero weights."
-            );
+            // Also covers a sampler built entirely from zero weights, which never
+            // had a drawable index to begin with.  Under -fno-exceptions this
+            // message is the only diagnostic the caller gets (the macro prints
+            // and terminates), so it names both situations.
+            QKA_SQD_THROW_RUNTIME_ERROR_("No nonzero weights remain to draw from.");
         }
         --remaining_nonzero_weights;
 
