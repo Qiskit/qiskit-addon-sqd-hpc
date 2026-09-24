@@ -131,14 +131,16 @@ TEST_CASE("Configuration recovery tests from python addon")
         CHECK(probs_rec.size() == 1);
         CHECK(probs_rec[0] == 1.0);
     }
-    SUBCASE("Sum of probabilities is zero.")
+    SUBCASE("All input probabilities are zero.")
     {
-        // Regression test for
-        // https://github.com/Qiskit/qiskit-addon-sqd-hpc/issues/33, mirroring
-        // https://github.com/Qiskit/qiskit-addon-sqd/issues/274.  When every
-        // input probability (and hence the sum of the recovered
-        // probabilities) is zero, normalization must not produce NaNs via
-        // division by zero.
+        // See https://github.com/Qiskit/qiskit-addon-sqd-hpc/issues/33.  When
+        // every input probability is zero, the recovered probabilities sum to
+        // zero, and internal::_normalize must skip the division rather than
+        // produce NaNs.  (The flip weights here are nonzero, so this exercises
+        // only output normalization.  The division by zero in
+        // https://github.com/Qiskit/qiskit-addon-sqd/issues/274 cannot arise
+        // here, since this port never normalizes flip weights; it passes the
+        // raw weights to NoReplacementSampler.)
         constexpr auto num_orbs = 4;
         constexpr auto half_orbs = num_orbs / 2;
         constexpr auto ham_r = 2;
@@ -151,7 +153,9 @@ TEST_CASE("Configuration recovery tests from python addon")
         auto [mat_rec, probs_rec] =
             recover_configurations(bitstrings, probs, occs, {ham_r, ham_l}, rng);
         REQUIRE(mat_rec.size() == probs_rec.size());
-        CHECK(mat_rec.size() >= 1);
+        // Both inputs correct to 0b1111 and are merged into a single entry.
+        CHECK(mat_rec.size() == 1);
+        CHECK(mat_rec[0] == 0b1111);
         for (const auto &prob : probs_rec) {
             CHECK_FALSE(std::isnan(prob));
             CHECK(prob == 0.0);
