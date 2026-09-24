@@ -167,6 +167,109 @@ TEST_CASE("Configuration recovery tests from python addon")
 }
 
 TEST_CASE_TEMPLATE(
+    "Spinless configuration recovery", BitstringType, std::bitset<4>,
+    boost::dynamic_bitset<> BITSET2_IF_AVAILABLE
+)
+{
+    constexpr auto N = 4;
+    std::mt19937_64 rng;
+    SUBCASE("Only the total Hamming weight is conserved")
+    {
+        // A spinful recovery with one electron per species would move a bit
+        // from the right half to the left; the spinless one leaves it alone.
+        BitstringType bs;
+        set_bitset(N, bs, 0b0011);
+        const std::vector<BitstringType> bitstrings{bs};
+        const std::vector<double> probs{1.0};
+        const std::vector<double> occs(N, 0.5);
+        auto [mat_rec, probs_rec] =
+            recover_configurations(bitstrings, probs, occs, 2, rng);
+        REQUIRE(mat_rec.size() == 1);
+        CHECK(mat_rec[0] == bs);
+        CHECK(probs_rec == std::vector<double>{1.0});
+    }
+    SUBCASE("Zeros to ones, guided by occupancies")
+    {
+        BitstringType bs, expected;
+        set_bitset(N, bs, 0b0000);
+        set_bitset(N, expected, 0b0100);
+        const std::vector<BitstringType> bitstrings{bs};
+        const std::vector<double> probs{1.0};
+        const std::vector<double> occs{0.0, 0.0, 1.0, 0.0};
+        auto [mat_rec, probs_rec] =
+            recover_configurations(bitstrings, probs, occs, 1, rng);
+        REQUIRE(mat_rec.size() == 1);
+        CHECK(mat_rec[0] == expected);
+        CHECK(probs_rec == std::vector<double>{1.0});
+    }
+    SUBCASE("Ones to zeros, guided by occupancies")
+    {
+        BitstringType bs, expected;
+        set_bitset(N, bs, 0b1111);
+        set_bitset(N, expected, 0b1011);
+        const std::vector<BitstringType> bitstrings{bs};
+        const std::vector<double> probs{1.0};
+        const std::vector<double> occs{1.0, 1.0, 0.0, 1.0};
+        auto [mat_rec, probs_rec] =
+            recover_configurations(bitstrings, probs, occs, 3, rng);
+        REQUIRE(mat_rec.size() == 1);
+        CHECK(mat_rec[0] == expected);
+        CHECK(probs_rec == std::vector<double>{1.0});
+    }
+    SUBCASE("Duplicates are merged and probabilities normalized")
+    {
+        BitstringType bs0, bs1, expected;
+        set_bitset(N, bs0, 0b0000);
+        set_bitset(N, bs1, 0b1111);
+        set_bitset(N, expected, 0b1111);
+        const std::vector<BitstringType> bitstrings{bs0, bs1};
+        const std::vector<double> probs{1.0, 3.0};
+        const std::vector<double> occs(N, 1.0);
+        auto [mat_rec, probs_rec] =
+            recover_configurations(bitstrings, probs, occs, N, rng);
+        REQUIRE(mat_rec.size() == 1);
+        CHECK(mat_rec[0] == expected);
+        CHECK(probs_rec == std::vector<double>{1.0});
+    }
+    SUBCASE("Too many particles")
+    {
+        BitstringType bs;
+        set_bitset(N, bs, 0);
+        const std::vector<BitstringType> bitstrings{bs};
+        const std::vector<double> probs{1.0};
+        const std::vector<double> occs(N, 1.0);
+        CHECK_THROWS_AS(
+            std::ignore = recover_configurations(bitstrings, probs, occs, N + 1, rng),
+            std::invalid_argument
+        );
+    }
+    SUBCASE("Bitstring length does not match occupancies")
+    {
+        BitstringType bs;
+        set_bitset(N, bs, 0);
+        const std::vector<BitstringType> bitstrings{bs};
+        const std::vector<double> probs{1.0};
+        const std::vector<double> occs(N / 2, 1.0);
+        CHECK_THROWS_AS(
+            std::ignore = recover_configurations(bitstrings, probs, occs, 1, rng),
+            std::invalid_argument
+        );
+    }
+    SUBCASE("Probabilities length does not match bitstrings")
+    {
+        BitstringType bs;
+        set_bitset(N, bs, 0);
+        const std::vector<BitstringType> bitstrings{bs};
+        const std::vector<double> probs{1.0, 1.0};
+        const std::vector<double> occs(N, 1.0);
+        CHECK_THROWS_AS(
+            std::ignore = recover_configurations(bitstrings, probs, occs, 1, rng),
+            std::invalid_argument
+        );
+    }
+}
+
+TEST_CASE_TEMPLATE(
     "Bit manipulation", BitstringType, std::bitset<7>, boost::dynamic_bitset<>
 )
 {
