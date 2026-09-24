@@ -150,6 +150,20 @@ void _bipartite_bitstring_correcting(
                 }
             }
             internal::NoReplacementSampler sampler(weights);
+            // Bail out early with a message that names the actual problem.  The
+            // sampler would otherwise fail partway through the loop below,
+            // reporting only that it ran out of nonzero weights -- true, but it
+            // does not say why, and under -fno-exceptions that message is the
+            // whole diagnostic.  This mirrors the pre-check in subsampling.hpp.
+            if (num_flip > sampler.get_remaining_nonzero_weights()) {
+                QKA_SQD_THROW_INVALID_ARGUMENT_(
+                    "Cannot correct bitstring to the target Hamming weight: too "
+                    "few orbitals have a nonzero probability of flipping.  This "
+                    "happens when the average occupancies leave no orbital "
+                    "eligible to flip, e.g. fully saturated occupancies with a "
+                    "target Hamming weight below the current count."
+                );
+            }
             for (std::size_t i = 0; i < num_flip; ++i) {
                 const auto idx = indices[sampler(rng)];
                 bitstring.flip(idx);
