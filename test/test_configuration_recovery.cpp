@@ -147,6 +147,26 @@ TEST_CASE("Configuration recovery tests from python addon")
             std::invalid_argument
         );
     }
+    SUBCASE("No orbital is eligible to flip")
+    {
+        // See https://github.com/Qiskit/qiskit-addon-sqd-hpc/issues/64.  Fully
+        // saturated occupancies drive every 1-to-0 flip probability to zero
+        // (density_s == 0, so _p_flip_1_to_0(0.0, 1.0) == 0.0), while the target
+        // Hamming weight of zero asks for two flips.  No orbital is eligible, so
+        // this must be reported as an invalid argument rather than failing inside
+        // the sampler.
+        constexpr auto num_orbs = 4;
+        constexpr auto half_orbs = num_orbs / 2;
+        const std::vector<std::bitset<num_orbs>> bitstrings{0b1111};
+        const std::vector<double> probs(1, 1.0);
+        std::array<std::vector<double>, 2> occs{
+            std::vector<double>(half_orbs, 1.0), std::vector<double>(half_orbs, 1.0)
+        };
+        CHECK_THROWS_AS(
+            std::ignore = recover_configurations(bitstrings, probs, occs, {0, 0}, rng),
+            std::invalid_argument
+        );
+    }
     SUBCASE("Bad Hamming left")
     {
         constexpr auto num_orbs = 4;
