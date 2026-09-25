@@ -37,6 +37,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <random>
+#include <stdexcept>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -443,22 +445,39 @@ TEST_CASE_TEMPLATE_DEFINE(
     narrow_word_seed_collision
 )
 {
-    // Chosen so that SplitMix64(a) and SplitMix64(b) share their low 32 bits.
-    constexpr std::uint64_t seed_a = 149694;
-    constexpr std::uint64_t seed_b = 149778;
+    // Chosen so that *truncating* SplitMix64 to 32 bits maps both seeds to the
+    // same key, while folding to 32 bits separates them.
+    //
+    // The distinction matters, and an earlier version of this case got it wrong: a
+    // pair that merely shares its low 32 bits is not enough.  The correct fold's
+    // `z ^= z >> 32` mixes the high half down, so such a pair comes apart anyway --
+    // and so does a truncation-only implementation, because the engine itself
+    // reduces the key mod 2^32.  A pair chosen that way therefore passes whether or
+    // not `key_bits_of` respects `word_size`, which is the very bug this case
+    // exists to catch.  This pair collides in the *keyed result* under truncation.
+    constexpr std::uint64_t seed_a = 65336;
+    constexpr std::uint64_t seed_b = 81207;
 
-    // Precondition: this pair is only interesting if the mixed values really do
-    // collide in the low word.  If a future change to the mixer breaks that, this
-    // case would silently stop testing anything.
-    const auto mixed_a =
-        Qiskit::addon::sqd::internal::fold_seed_to_bits<std::uint64_t>(seed_a, 64);
-    const auto mixed_b =
-        Qiskit::addon::sqd::internal::fold_seed_to_bits<std::uint64_t>(seed_b, 64);
+    namespace tr = Qiskit::addon::sqd::internal;
+
+    // Precondition 1: truncation really does collide these seeds, so a fold that
+    // ignored `word_size` would alias them.  If a future change to the mixer breaks
+    // this, the case would silently stop testing anything.
+    const auto mixed_a = tr::fold_seed_to_bits<std::uint64_t>(seed_a, 64);
+    const auto mixed_b = tr::fold_seed_to_bits<std::uint64_t>(seed_b, 64);
     REQUIRE(mixed_a != mixed_b);
     REQUIRE_MESSAGE(
         (mixed_a & 0xffffffffULL) == (mixed_b & 0xffffffffULL),
-        "the seed pair no longer collides in the low 32 bits, so this case would "
-        "pass for the wrong reason; pick a new pair"
+        "truncating the mixed seeds to 32 bits no longer collides this pair, so "
+        "this case would pass for the wrong reason; pick a new pair"
+    );
+
+    // Precondition 2: the 32-bit fold separates them.  Together with the above,
+    // this is what makes the checks below sensitive to `key_bits_of` respecting
+    // `word_size` rather than to the engine's own truncation.
+    REQUIRE(
+        tr::fold_seed_to_bits<std::uint32_t>(seed_a, 32) !=
+        tr::fold_seed_to_bits<std::uint32_t>(seed_b, 32)
     );
 
     auto a = keyed_streams<RNGType>(seed_a, {4, 16});
@@ -564,3 +583,212 @@ TEST_CASE("recover_configurations accepts a generator with no seed()")
     CHECK(probs == probs2);
 }
 #endif
+
+// ---------------------------------------------------------------------------
+// The substream *capacity* guard.
+//
+// A counter-based engine keys work item i by writing i into a counter word, so it
+// can address only 2^word_size items; beyond that two items alias onto one
+// substream and silently draw identical randomness.  `recover_configurations`
+// rejects such a workload up front.
+//
+// Nothing else in the suite can reach that guard.  Both philox widths and the
+// other mocks key at least 2^32 substreams, and allocating 2^32 bitstrings to trip
+// the check is not a test.  MockCBRNGTinyWord exists for this: `word_size = 8`
+// puts the capacity at 256, so a few hundred bitstrings straddle it.
+
+namespace
+{
+
+// Run `recover_configurations` over `count` bitstrings with a generator of type
+// `RNGType`.  Bitstrings repeat once `count` exceeds the 8-bit space, which is
+// fine: the guard is about how many *work items* there are, not how many are
+// distinct.
+template <typename RNGType>
+std::pair<std::vector<std::bitset<8>>, std::vector<double>>
+run_recover_n(RNGType &rng, std::size_t count)
+{
+    constexpr unsigned int N = 8;
+    constexpr unsigned int half = N / 2;
+    std::vector<std::bitset<N>> bitstrings;
+    bitstrings.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        // Hamming weight 2 per half, so no correction is unsatisfiable.
+        bitstrings.emplace_back(
+            static_cast<unsigned long long>(0x33u + (i % 4u) * 0x11u)
+        );
+    }
+    std::vector<double> probabilities(bitstrings.size(), 1.0);
+    std::array<std::vector<double>, 2> occs{
+        std::vector<double>(half, 0.4), std::vector<double>(half, 0.6)
+    };
+    return recover_configurations(bitstrings, probabilities, occs, {2, 2}, rng);
+}
+
+} // namespace
+
+TEST_CASE("max_substreams reports the engine's addressable capacity")
+{
+    namespace tr = Qiskit::addon::sqd::internal;
+
+    // 8-bit words: 256 substreams, small enough to exceed in a test.
+    static_assert(tr::key_bits_of<MockCBRNGTinyWord>::value == 8, "");
+    static_assert(tr::max_substreams<MockCBRNGTinyWord>() == 256, "");
+
+    // 32-bit words fit a 64-bit size_t, so the capacity is finite but unreachable.
+    static_assert(
+        tr::max_substreams<MockCBRNGNarrowWord>() == (std::size_t{1} << 32), ""
+    );
+
+    // A word at least as wide as size_t cannot be overflowed by any index, which
+    // `max_substreams` reports as 0 rather than computing an overflowing 1 << 64.
+    static_assert(tr::max_substreams<MockCBRNGTemplate>() == 0, "");
+
+    // The guard consuming this must treat 0 as "unbounded", not as "capacity
+    // zero" -- a sign inversion there would reject every workload.
+    CHECK(tr::max_substreams<MockCBRNGTemplate>() == 0);
+}
+
+// Gated on exceptions: with QKA_SQD_DISABLE_EXCEPTIONS the throw macros call
+// std::terminate(), which cannot be caught by design.
+#if !QKA_SQD_DISABLE_EXCEPTIONS
+TEST_CASE("recover_configurations rejects more work items than the engine can key")
+{
+    namespace tr = Qiskit::addon::sqd::internal;
+    constexpr std::size_t capacity = tr::max_substreams<MockCBRNGTinyWord>();
+    static_assert(capacity == 256, "this case assumes an 8-bit counter word");
+
+    // Just inside the capacity: accepted, and the correction really runs.
+    {
+        MockCBRNGTinyWord rng(4u);
+        auto [bs, probs] = run_recover_n(rng, capacity - 56);
+        CHECK(bs.size() == probs.size());
+        CHECK(bs.size() >= 1);
+    }
+
+    // Exactly at the capacity: still accepted.  The largest index used is
+    // capacity - 1, which fits the word, so the boundary must not be off by one.
+    {
+        MockCBRNGTinyWord rng(4u);
+        auto [bs, probs] = run_recover_n(rng, capacity);
+        CHECK(bs.size() == probs.size());
+        CHECK(bs.size() >= 1);
+    }
+
+    // One past the capacity: rejected, because index `capacity` would alias onto
+    // index 0.
+    {
+        MockCBRNGTinyWord rng(4u);
+        CHECK_THROWS_AS(run_recover_n(rng, capacity + 1), std::invalid_argument);
+    }
+
+    // Well past it, to confirm the check is a comparison and not an exact match.
+    {
+        MockCBRNGTinyWord rng(4u);
+        CHECK_THROWS_AS(run_recover_n(rng, capacity + 300), std::invalid_argument);
+    }
+
+    // An engine with a wide counter word accepts the same workload that the
+    // narrow one rejected, so the rejection is a property of the engine's
+    // capacity rather than of the workload size.
+    {
+        MockCBRNGTemplate rng(4u);
+        auto [bs, probs] = run_recover_n(rng, capacity + 300);
+        CHECK(bs.size() == probs.size());
+        CHECK(bs.size() >= 1);
+    }
+}
+#endif // !QKA_SQD_DISABLE_EXCEPTIONS
+
+// `substream_keying` is the documented specialization point for an engine whose
+// counter is shaped or ordered differently, so a user can reach it.  These cases
+// pin the contract it must satisfy: the default keys through it, and a
+// specialization actually displaces that default.
+
+namespace
+{
+
+// An engine identical to MockCBRNGTemplate, distinct only as a type, so a
+// specialization of substream_keying can be attached to it without affecting the
+// engines used elsewhere in this file.
+class MockCBRNGCustomKeyed : public MockCBRNGTemplate
+{
+  public:
+    using MockCBRNGTemplate::MockCBRNGTemplate;
+};
+
+} // namespace
+
+namespace Qiskit
+{
+namespace addon
+{
+namespace sqd
+{
+namespace internal
+{
+
+// Keys the index into the *least* significant counter word rather than the most.
+// This is a deliberately poor layout -- it gives adjacent items a stride of one
+// counter value -- but it is observably different from the default, which is what
+// the test needs.
+//
+// The key is derived exactly as the default does, so the counter layout is the
+// *only* difference between this and the default.  Seeding differently here would
+// make the comparison below pass for the wrong reason: it would detect the changed
+// seed rather than the changed layout, and would still pass if the specialization
+// were never consulted at all.
+template <>
+struct substream_keying<MockCBRNGCustomKeyed> {
+    // The signature must match the primary template, which carries the same
+    // suppression for the same reason.
+    static void
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+    key(MockCBRNGCustomKeyed &engine, std::uint64_t base_seed, std::uint64_t index)
+    {
+        using result_type = MockCBRNGCustomKeyed::result_type;
+        engine.seed(
+            fold_seed_to_bits<result_type>(
+                base_seed, key_bits_of<MockCBRNGCustomKeyed>::value
+            )
+        );
+        MockCBRNGCustomKeyed::counter_type counter{};
+        counter[std::tuple_size<MockCBRNGCustomKeyed::counter_type>::value - 1] = index;
+        engine.set_counter(counter);
+    }
+};
+
+} // namespace internal
+} // namespace sqd
+} // namespace addon
+} // namespace Qiskit
+
+TEST_CASE("a substream_keying specialization displaces the default")
+{
+    namespace tr = Qiskit::addon::sqd::internal;
+
+    // The specialization must not change how the engine is classified: it is the
+    // keying that is being replaced, not the detection.
+    static_assert(tr::is_counter_based_rng_v<MockCBRNGCustomKeyed>, "");
+
+    constexpr std::uint64_t seed = 0x0123456789abcdefULL;
+
+    // The custom layout writes a different counter word than the default, so the
+    // resulting streams must differ.  Were the specialization ignored, these would
+    // be identical.
+    MockCBRNGCustomKeyed custom(1u);
+    tr::key_counter_based_rng(custom, seed, std::size_t{5});
+
+    MockCBRNGTemplate def(1u);
+    tr::key_counter_based_rng(def, seed, std::size_t{5});
+
+    CHECK(custom() != def());
+
+    // The specialization is still required to give distinct items distinct
+    // streams, which is the contract every keying must honor.
+    MockCBRNGCustomKeyed a(1u);
+    MockCBRNGCustomKeyed b(1u);
+    tr::key_counter_based_rng(a, seed, std::size_t{5});
+    tr::key_counter_based_rng(b, seed, std::size_t{6});
+    CHECK(a() != b());
+}

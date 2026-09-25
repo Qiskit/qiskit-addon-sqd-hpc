@@ -37,8 +37,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 using Qiskit::addon::sqd::internal::NoReplacementSampler;
@@ -203,3 +205,56 @@ TEST_CASE("NoReplacementSampler never selects a zero-weight index")
         }
     }
 }
+
+// A weight vector whose elements are each finite but whose *sum* overflows to
+// infinity used to hang the sampler rather than fail.
+//
+// std::discrete_distribution normalizes by the sum, so an infinite sum makes
+// every probability exactly zero, and libstdc++ then returns the last index on
+// every draw.  The retry loop cannot escape that: its recovery is to rebuild the
+// distribution from the surviving weights, whose sum is still infinite.  The
+// second draw therefore spun in `for (;;)` forever.
+//
+// `recover_configurations` cannot produce such weights (`_p_flip_*` returns
+// values in [0, 1], so its sums are bounded by the orbital count), but the
+// sampler is a general-purpose utility and validated each weight individually
+// while ignoring the total.
+//
+// Gated on exceptions: with QKA_SQD_DISABLE_EXCEPTIONS the throw macros call
+// std::terminate(), which cannot be caught by design.
+#if !QKA_SQD_DISABLE_EXCEPTIONS && !QKA_SQD_FINITE_MATH_ONLY
+TEST_CASE("NoReplacementSampler rejects weights whose sum overflows")
+{
+    constexpr double huge = std::numeric_limits<double>::max() / 4.0;
+    // Six copies of DBL_MAX/4 sum to 1.5*DBL_MAX, i.e. +inf, while every
+    // individual element is finite and so passes the per-element checks.
+    const std::vector<double> weights{1.0,  huge, huge, 0.0, huge,
+                                      0.01, huge, huge, huge};
+
+    double naive_sum = 0.0;
+    for (const double w : weights) {
+        naive_sum += w;
+    }
+    REQUIRE(std::isinf(naive_sum)); // the precondition this test is about
+
+    // Wrapped in a lambda because the constructor call's angle brackets contain a
+    // comma-free type but the macro still splits on the template argument list.
+    const auto construct = [&weights] {
+        NoReplacementSampler<std::vector<double>> rejected(weights);
+    };
+    CHECK_THROWS_WITH_AS(
+        construct(), "Weight array sums to an infinite value", std::invalid_argument
+    );
+
+    // A large-but-finite sum of the same shape must still be accepted, so the
+    // guard rejects overflow rather than merely large weights.
+    const std::vector<double> ok{huge, huge, 1.0};
+    NoReplacementSampler<std::vector<double>> sampler(ok);
+    CHECK(sampler.get_remaining_nonzero_weights() == 3);
+    std::mt19937_64 rng(7);
+    for (int i = 0; i < 3; ++i) {
+        const std::size_t idx = sampler(rng);
+        CHECK(idx < ok.size());
+    }
+}
+#endif // !QKA_SQD_DISABLE_EXCEPTIONS && !QKA_SQD_FINITE_MATH_ONLY

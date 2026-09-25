@@ -217,16 +217,22 @@ class MockCBRNGOverloaded
 };
 
 // Mock 3: the shape that separates the engine's *word* width from the width of
-// the type carrying it.  `std::philox4x32` is exactly this: a 64-bit result_type
-// with 32-bit words, so its `seed()` reduces the key mod 2^32 and its
-// `set_counter` reduces each word likewise.
+// the type carrying it: a 64-bit result_type with 32-bit words, so `seed()`
+// reduces the key mod 2^32 and `set_counter` reduces each word likewise.
 //
 // This is the only mock that exercises `key_bits_of`'s `word_size`
 // specialization.  MockCBRNGTemplate exposes neither `word_size` nor
 // `word_count`, and MockCBRNGOverloaded has `word_count` but no `word_size`, so
 // both take the `sizeof(result_type) * 8` fallback and neither can detect a fold
-// that narrows to the wrong width.  Without this mock that bug is reachable only
-// via philox4x32 on C++26.
+// that narrows to the wrong width.
+//
+// It is also the *portable* guarantor of that coverage, which is why the widths
+// here are written out rather than taken from philox.  `std::philox4x32` is
+// `philox_engine<uint_fast32_t, 32, 4, 10>`, and `uint_fast32_t` is 64 bits on
+// x86-64 glibc but only 32 on MSVC and some ARM ABIs.  Where it is 32 bits,
+// philox4x32's carrier and word widths coincide and the tests that use it to
+// check narrowing pass vacuously; this mock hard-codes the mismatch, so the
+// coverage holds on every platform.
 class MockCBRNGNarrowWord
 {
   public:
@@ -275,6 +281,95 @@ class MockCBRNGNarrowWord
     }
     // Reduces the key mod 2^word_size, exactly as std::philox_engine does -- this
     // truncation is what makes folding the seed to the wrong width observable.
+    void seed(result_type s)
+    {
+        key_ = s & word_mask;
+        counter_.fill(0);
+        index_ = word_count;
+    }
+    void set_counter(const std::array<result_type, word_count> &c)
+    {
+        for (std::size_t i = 0; i < word_count; ++i) {
+            counter_[i] = c[word_count - 1 - i] & word_mask;
+        }
+        index_ = word_count;
+    }
+    static constexpr result_type min()
+    {
+        return 0;
+    }
+    static constexpr result_type max()
+    {
+        return word_mask;
+    }
+    result_type operator()()
+    {
+        if (index_ >= word_count) {
+            generate_block();
+        }
+        return buffer_[index_++];
+    }
+};
+
+// Mock 4: a word so narrow that `max_substreams()` is small enough to exceed in a
+// test.  Every other engine here -- and both standard philox widths -- can key at
+// least 2^32 substreams, so the workload guard in `recover_configurations` is
+// unreachable with them: allocating 2^32 bitstrings to trip it is not a test.
+//
+// With `word_size = 8` the capacity is 256, so a few hundred bitstrings are enough
+// to distinguish "accepted" from "rejected".  The mock is otherwise a working
+// generator, so the accepted case really does run the correction to completion
+// rather than merely failing to throw.
+//
+// An 8-bit word makes for a terrible RNG.  That is not the point: what is under
+// test is the capacity arithmetic in `max_substreams()` and the guard that
+// consumes it, neither of which depends on the quality of the stream.
+class MockCBRNGTinyWord
+{
+  public:
+    using result_type = std::uint64_t;
+    static constexpr std::size_t word_count = 4;
+    static constexpr int word_size = 8;
+
+  private:
+    static constexpr result_type word_mask =
+        (static_cast<result_type>(1) << word_size) - 1;
+    std::array<result_type, word_count> counter_{};
+    result_type key_ = 0;
+    std::array<result_type, word_count> buffer_{};
+    std::size_t index_ = word_count;
+
+    static result_type mix(result_type z)
+    {
+        z += 0x9e3779b97f4a7c15ULL;
+        z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+        z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+        return z ^ (z >> 31);
+    }
+
+    void generate_block()
+    {
+        result_type acc = key_;
+        for (std::size_t i = 0; i < word_count; ++i) {
+            acc = mix(acc ^ counter_[i] ^ static_cast<result_type>(i));
+        }
+        for (std::size_t i = 0; i < word_count; ++i) {
+            buffer_[i] = mix(acc ^ mix(static_cast<result_type>(i))) & word_mask;
+        }
+        for (std::size_t i = 0; i < word_count; ++i) {
+            counter_[i] = (counter_[i] + 1) & word_mask;
+            if (counter_[i] != 0) {
+                break;
+            }
+        }
+        index_ = 0;
+    }
+
+  public:
+    explicit MockCBRNGTinyWord(result_type s = 0)
+    {
+        seed(s);
+    }
     void seed(result_type s)
     {
         key_ = s & word_mask;

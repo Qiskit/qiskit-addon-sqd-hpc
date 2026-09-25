@@ -86,6 +86,13 @@ int main()
         dump<std::mt19937>("mt19937");
 #if defined(__cpp_lib_philox_engine)
         dump<std::philox4x64>("philox4x64");
+        // philox4x32 is dumped as well as philox4x64 because only it exercises the
+        // narrow-word keying path: its words are half the width of the type that
+        // carries them, so `key_bits_of` reports 32 and the seed is folded to 32
+        // bits rather than passed through.  philox4x64's words are full width, so a
+        // fold that narrowed to the wrong width would still agree with itself
+        // across builds and the diff would pass.
+        dump<std::philox4x32>("philox4x32");
 #endif
 #if defined(__cpp_exceptions) || defined(_CPPUNWIND)
     } catch (const std::exception &e) {

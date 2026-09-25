@@ -193,7 +193,7 @@ void _bipartite_bitstring_correcting(
 /// to derive a base seed and then re-seeds it (and, for a counter-based engine,
 /// re-keys it per work item), so it is not merely advanced by the number of
 /// values consumed.  Callers who continue to draw from the same generator
-/// afterwards will see a different sequence than in releases before this change.
+/// afterwards should not assume any particular number of values was consumed.
 ///
 /// @param[in] bitstrings A container (e.g., `std::vector`) of bitstrings.
 /// @param[in] probabilities A 1D array specifying a probability distribution over
@@ -289,8 +289,10 @@ template <
         //
         // Checking it here also keeps an all-zero weight vector away from
         // std::discrete_distribution's constructor, which requires a positive
-        // sum: libstdc++ built with _GLIBCXX_ASSERTIONS (the default on several
-        // distributions) aborts there, in serial builds too.
+        // sum.  libstdc++ asserts that sum in any build where __glibcxx_assert is
+        // live -- measured with GCC 16: an ordinary -O0 build aborts there, as
+        // does -O2 -D_GLIBCXX_ASSERTIONS -- and it does so in serial builds too,
+        // so this is not a hardening-flag corner case.
         const auto n_right_bits =
             internal::mask_lower_n_bits(bitstring, partition_size).count();
         const std::array<std::uint64_t, 2> hamming_weight{

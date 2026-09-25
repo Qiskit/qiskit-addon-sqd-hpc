@@ -35,11 +35,13 @@
 //
 //   * `result_type`, and `seed(result_type)` to set its key.  The key space is
 //     bounded by the engine's `word_size` when it declares one, which may be
-//     narrower than `result_type` (std::philox4x32: 64-bit result_type, 32-bit
-//     words) -- see `key_bits_of`;
-//   * a counter type, either named as a nested `counter_type` or (the standard
-//     shape) implied by a static `word_count` alongside `result_type`, in which
-//     case it is `std::array<result_type, word_count>`;
+//     narrower than `result_type` (on a typical 64-bit platform std::philox4x32
+//     has a 64-bit result_type and 32-bit words) -- see `key_bits_of`;
+//   * a counter type: either implied by a static `word_count` alongside
+//     `result_type`, in which case it is `std::array<result_type, word_count>`,
+//     or named explicitly as a nested `counter_type`.  The derived form is the
+//     standard one -- std::philox_engine names no `counter_type`, so the real
+//     engine takes that path and the nested form serves other shapes;
 //   * `set_counter(const counter_type &)` following the std::philox_engine
 //     semantics described at `substream_keying` below.
 //
@@ -113,13 +115,21 @@ struct counter_type_of<
 ///
 /// This is *not* `sizeof(result_type) * 8`.  A counter-based engine's key and
 /// counter words are `word_size` bits wide, and `word_size` may be narrower than
-/// the type that carries them: `std::philox4x32` has a 64-bit `result_type` but a
-/// 32-bit `word_size`, and its `seed()` reduces the key mod `2^word_size`.  Using
-/// the type's width instead would let two base seeds that differ only above
-/// `word_size` key the *same* substream.
+/// the type that carries them: on a typical 64-bit platform `std::philox4x32` has
+/// a 64-bit `result_type` but a 32-bit `word_size`, and its `seed()` reduces the
+/// key mod `2^word_size`.  Using the type's width instead would let two base seeds
+/// that differ only above `word_size` key the *same* substream.
 ///
 /// An engine exposing `word_size` is taken at its word; otherwise the carrier
 /// type's width is the best available bound.
+///
+/// This trait names the *key* width, and `substream_keying::key` additionally uses
+/// it to bound the work-item index, which is written to a *counter* word.  The two
+/// coincide for `std::philox_engine`, where a single `word_size` governs key words
+/// and counter words alike, and likewise for the `sizeof(result_type) * 8`
+/// fallback.  An engine whose key and counter words differ in width -- none in the
+/// standard, but the generic extension point permits it -- must specialize
+/// `substream_keying` rather than rely on this bound.
 template <typename R, typename = void>
 struct key_bits_of {
     /// Fallback: the full width of the type carrying the key.
@@ -134,6 +144,23 @@ struct key_bits_of<
 > {
     /// The engine's own word width, which bounds its key space.
     static constexpr int value = static_cast<int>(R::word_size);
+};
+
+/// Trait: is `C` tuple-like, i.e. does `std::tuple_size<C>` have a value?
+///
+/// `substream_keying::key` indexes the counter and needs its word count, both of
+/// which require this.  Probing it separately is what lets that function report a
+/// counter type it cannot handle with a readable message: naming
+/// `std::tuple_size<C>::value` directly in a `static_assert` on a non-tuple-like
+/// `C` hard-errors inside the standard library ("incomplete type") before the
+/// assertion's own text is ever reached.
+template <typename C, typename = void>
+struct is_tuple_like : std::false_type {
+};
+
+template <typename C>
+struct is_tuple_like<C, std::void_t<decltype(std::tuple_size<C>::value)>>
+  : std::true_type {
 };
 
 /// Trait: is `R` a counter-based engine, i.e. addressable by counter?
@@ -204,9 +231,14 @@ inline constexpr bool is_seedable_rng_v = is_seedable_rng<R>::value;
 ///
 /// Used for the *key* only -- never for the item index, which must stay an exact
 /// address (see `substream_keying::key`).
+///
+/// `bits` must be at least 1.  At 0 the fold below would shift by the full width
+/// (undefined) and mask everything away, mapping every seed to key 0; callers
+/// reject a zero-width key space rather than pass it here.
 template <typename T>
 constexpr T fold_seed_to_bits(std::uint64_t z, int bits) noexcept
 {
+    assert(bits >= 1 && "a key space narrower than one bit cannot be keyed");
     z += 0x9e3779b97f4a7c15ULL;
     z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
     z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
@@ -239,6 +271,13 @@ constexpr T fold_seed_to_bits(std::uint64_t z, int bits) noexcept
 /// fixed per-item budget can be assumed.  With adjacent counters, item `i`'s
 /// draws `n..2n-1` would be item `i+1`'s first `n` draws, bit for bit.
 ///
+/// One boundary case, for completeness: the counter is one integer modulo
+/// `2^(w*n)`, so the last addressable item (`index == 2^w - 1`) is separated from
+/// item 0 by wraparound rather than by a following neighbor.  It would have to
+/// exhaust its own `2^(w*(n-1))` stride to reach it -- 2^192 counter values for
+/// philox4x64 -- so this bounds that item exactly as the others are bounded, but
+/// by the counter's modulus instead of by the next item's base.
+///
 /// Specialize this for an engine whose counter is ordered or shaped differently.
 template <typename R, typename = void>
 struct substream_keying {
@@ -257,6 +296,15 @@ struct substream_keying {
             "A counter-based engine must also provide seed(result_type) to set "
             "its key; specialize substream_keying for an engine that does not."
         );
+        // Checked before `std::tuple_size` is named below, so an engine whose
+        // counter is not tuple-like (a raw C array member, say) reads this message
+        // instead of an "incomplete type" error from inside <tuple>.
+        static_assert(
+            is_tuple_like<counter_type>::value,
+            "A counter-based engine's counter type must be tuple-like (e.g. "
+            "std::array) so its words can be counted and indexed; specialize "
+            "substream_keying for an engine whose counter is shaped otherwise."
+        );
         // A single-word counter would make `index` the *entire* counter below,
         // giving consecutive items a stride of one counter value -- immediate
         // overlap, which is exactly what keying by counter exists to prevent.
@@ -274,6 +322,15 @@ struct substream_keying {
         // which for philox4x32 is 32, half of its 64-bit result_type.  See
         // `key_bits_of`.
         constexpr int key_bits = key_bits_of<R>::value;
+        // `fold_seed_to_bits` would shift by `bits` below, which is undefined at 0
+        // and, on a typical implementation, collapses every seed to key 0 -- so
+        // every substream would share one key, silently.  No real engine declares
+        // `word_size == 0`, but `word_size` comes from a user-supplied type here.
+        static_assert(
+            key_bits >= 1,
+            "A counter-based engine must have a nonempty key space (word_size or "
+            "result_type at least one bit wide)."
+        );
         engine.seed(fold_seed_to_bits<result_type>(base_seed, key_bits));
         counter_type counter{};
         // `index` is an address, not entropy: it is assigned verbatim so that

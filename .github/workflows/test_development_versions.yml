@@ -86,18 +86,16 @@ jobs:
         run: |
           ./build/sqd_benchmarks
 
-  # Build with OpenMP and run the tests at several thread counts, exercising the
-  # parallel path of recover_configurations.
+  # Build with OpenMP against a development GCC and run the tests at several
+  # thread counts, exercising the parallel path of recover_configurations with a
+  # real counter-based engine.
   #
-  # The matrix covers more than one OpenMP configuration deliberately.  The
-  # g++-16 / C++26 row is the only one where std::philox_engine exists, so it is
-  # the only row that exercises the real counter-based engine and the
-  # serial-vs-OpenMP reproducibility diff.  The C++17 and C++20 rows are the
-  # standards the README advertises, and there the counter-based path is covered
-  # by the mock engines in the test suite instead.  The clang row exercises a
-  # different OpenMP runtime (libomp rather than libgomp).  The no-exceptions row
-  # guards the requirement that the parallel region never throws, since an
-  # exception escaping an OpenMP structured block terminates the process.
+  # GCC 16 is currently the only standard library shipping std::philox_engine, so
+  # this is the only place the real counter-based engine -- and the
+  # serial-vs-OpenMP reproducibility diff below -- can run.  The OpenMP
+  # configurations that stable toolchains can cover (C++17/C++20, clang's libomp,
+  # and the no-exceptions build) live in the latest-versions workflow, where the
+  # counter-based path is covered by the mock engines in the test suite.
   openmp-tests:
     name: OpenMP tests (C++${{ matrix.cxx_standard }}, ${{ matrix.compiler }}${{ matrix.no_exceptions && ', no exceptions' || '' }})
     runs-on: ubuntu-latest
@@ -106,18 +104,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - compiler: g++
-            cxx_standard: 17
-          - compiler: g++
-            cxx_standard: 20
-          - compiler: clang++
-            cxx_standard: 20
-          - compiler: g++
-            cxx_standard: 20
-            no_exceptions: true
-          # GCC 16 is currently the only standard library shipping
-          # std::philox_engine, so this is the row that exercises the real
-          # counter-based engine and the reproducibility diff below.
           - compiler: g++-16
             cxx_standard: 26
             philox: true
@@ -138,14 +124,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build
-          if [ "${{ matrix.compiler }}" = "g++-16" ]; then
-            sudo apt-get install -y g++-16
-          elif [ "${{ matrix.compiler }}" = "clang++" ]; then
-            # Clang needs libomp separately; libgomp ships with GCC.
-            sudo apt-get install -y clang libomp-dev
-          else
-            sudo apt-get install -y g++
-          fi
+          sudo apt-get install -y ${{ matrix.compiler }}
       - name: Configure CMake
         run: >-
           cmake -S . -B build -G Ninja
@@ -184,18 +163,30 @@ jobs:
             OMP_NUM_THREADS=$nthreads ./build/sqd_rng_reproducibility_dump > "omp-$nthreads.txt"
           done
 
-          # philox4x64 is keyed by work-item index, so it must match the serial
-          # build at every thread count.
+          # A counter-based engine is keyed by work-item index, so it must match
+          # the serial build at every thread count.  Both philox widths are
+          # checked: only philox4x32 has words narrower than the type carrying
+          # them, so it alone exercises the narrow-word key fold.
+          #
+          # This check cannot catch a fold that narrows to the wrong width: both
+          # builds would share the error and so still agree with each other.
+          # Measured -- making `key_bits_of` ignore `word_size` leaves every diff
+          # below green.  The width itself is pinned by the `max_substreams`
+          # static_asserts in test/test_rng_substitutability.cpp, which fail to
+          # compile under that change.  What this check does catch is a keying
+          # scheme that is not thread-count independent.
           status=0
-          grep '^philox4x64 ' serial.txt > serial-philox.txt
-          for nthreads in 1 2 4 8; do
-            grep '^philox4x64 ' "omp-$nthreads.txt" > "omp-philox-$nthreads.txt"
-            if diff -u serial-philox.txt "omp-philox-$nthreads.txt"; then
-              echo "OK: philox4x64 matches the serial build at $nthreads thread(s)"
-            else
-              echo "FAIL: philox4x64 differs from the serial build at $nthreads thread(s)"
-              status=1
-            fi
+          for engine in philox4x64 philox4x32; do
+            grep "^$engine " serial.txt > "serial-$engine.txt"
+            for nthreads in 1 2 4 8; do
+              grep "^$engine " "omp-$nthreads.txt" > "omp-$engine-$nthreads.txt"
+              if diff -u "serial-$engine.txt" "omp-$engine-$nthreads.txt"; then
+                echo "OK: $engine matches the serial build at $nthreads thread(s)"
+              else
+                echo "FAIL: $engine differs from the serial build at $nthreads thread(s)"
+                status=1
+              fi
+            done
           done
 
           # An ordinary engine is seeded per thread rather than keyed per item, so
@@ -222,8 +213,10 @@ jobs:
 
           # philox must actually have been compiled in, or the diffs above
           # compared two empty files.
-          if [ ! -s serial-philox.txt ]; then
-            echo "FAIL: no philox4x64 output; std::philox_engine was not compiled in"
-            status=1
-          fi
+          for engine in philox4x64 philox4x32; do
+            if [ ! -s "serial-$engine.txt" ]; then
+              echo "FAIL: no $engine output; std::philox_engine was not compiled in"
+              status=1
+            fi
+          done
           exit $status

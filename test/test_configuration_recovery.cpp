@@ -193,8 +193,8 @@ TEST_CASE_TEMPLATE(
 //     which libgomp turns into an abort -- so a catchable input error became a
 //     core dump, at any thread count; and
 //   * in *any* build, constructing a std::discrete_distribution over all-zero
-//     weights, which libstdc++ with _GLIBCXX_ASSERTIONS (a common distribution
-//     default) aborts on.
+//     weights, which libstdc++ aborts on wherever __glibcxx_assert is live --
+//     including an ordinary -O0 build, not only a hardened one.
 //
 // Gated only on exceptions being available: with QKA_SQD_DISABLE_EXCEPTIONS the
 // throw macros call std::terminate(), which cannot be caught by design.

@@ -93,3 +93,69 @@ jobs:
       - name: Run benchmarks
         run: |
           ./build/sqd_benchmarks
+
+  # Build with OpenMP and run the tests at several thread counts, exercising the
+  # parallel path of recover_configurations.
+  #
+  # The matrix covers more than one OpenMP configuration deliberately.  C++17 and
+  # C++20 are the standards the README advertises.  The clang row exercises a
+  # different OpenMP runtime (libomp rather than libgomp).  The no-exceptions row
+  # guards the requirement that the parallel region never throws, since an
+  # exception escaping an OpenMP structured block terminates the process.
+  #
+  # No standard library shipping with a released compiler provides
+  # std::philox_engine yet, so the counter-based path is covered here by the mock
+  # engines in the test suite.  The real engine, and the serial-vs-OpenMP
+  # reproducibility diff, live in the development-versions workflow.
+  openmp-tests:
+    name: OpenMP tests (C++${{ matrix.cxx_standard }}, ${{ matrix.compiler }}${{ matrix.no_exceptions && ', no exceptions' || '' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: g++
+            cxx_standard: 17
+          - compiler: g++
+            cxx_standard: 20
+          - compiler: clang++
+            cxx_standard: 20
+          - compiler: g++
+            cxx_standard: 20
+            no_exceptions: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Enable Kitware ppa, which provides latest cmake
+        run: |
+          # https://apt.kitware.com/
+          test -f /usr/share/doc/kitware-archive-keyring/copyright || wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
+          echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ noble main' | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+          if [ "${{ matrix.compiler }}" = "clang++" ]; then
+            # Clang needs libomp separately; libgomp ships with GCC.
+            sudo apt-get install -y clang libomp-dev
+          else
+            sudo apt-get install -y g++
+          fi
+      - name: Configure CMake
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+          -DCMAKE_CXX_STANDARD=${{ matrix.cxx_standard }}
+          -DSQD_ENABLE_OPENMP=ON
+          ${{ matrix.no_exceptions && '"-DCMAKE_CXX_FLAGS=-fno-exceptions -fno-rtti -DQKA_SQD_DISABLE_EXCEPTIONS=1 -DDOCTEST_CONFIG_NO_EXCEPTIONS_BUT_WITH_ALL_ASSERTS=1"' || '' }}
+      - name: CMake Build
+        run: cmake --build build -j4
+      - name: Run tests at several thread counts
+        run: |
+          for nthreads in 1 2 4 8; do
+            echo "== OMP_NUM_THREADS=$nthreads =="
+            OMP_NUM_THREADS=$nthreads time ./build/sqd_tests
+          done
