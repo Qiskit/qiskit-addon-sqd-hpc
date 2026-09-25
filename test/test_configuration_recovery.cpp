@@ -154,7 +154,7 @@ TEST_CASE("Configuration recovery tests from python addon")
             recover_configurations(bitstrings, probs, occs, {ham_r, ham_l}, rng);
         REQUIRE(mat_rec.size() == probs_rec.size());
         // Both inputs correct to 0b1111 and are merged into a single entry.
-        CHECK(mat_rec.size() == 1);
+        REQUIRE(mat_rec.size() == 1);
         CHECK(mat_rec[0] == 0b1111);
         for (const auto &prob : probs_rec) {
             CHECK_FALSE(std::isnan(prob));
