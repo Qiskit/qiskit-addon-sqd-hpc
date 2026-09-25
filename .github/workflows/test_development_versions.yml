@@ -125,3 +125,66 @@ jobs:
             echo "== OMP_NUM_THREADS=$nthreads =="
             OMP_NUM_THREADS=$nthreads time ./build/sqd_tests
           done
+      # A counter-based RNG is keyed per work item identically in the serial and
+      # parallel code paths, so both builds must produce the same output.  This
+      # cannot be checked from inside the test suite: _OPENMP selects the path at
+      # compile time, so no single binary sees both, and a golden value would not
+      # be portable because std::discrete_distribution consumes an
+      # implementation-defined number of engine draws.  Comparing two builds of
+      # the same standard library avoids that.
+      - name: Configure and build a serial binary to compare against
+        run: >-
+          cmake -S . -B build-serial -G Ninja
+          -DCMAKE_CXX_COMPILER=g++-16
+          -DCMAKE_CXX_STANDARD=26
+          && cmake --build build-serial -j4 --target sqd_rng_reproducibility_dump
+      - name: Serial and OpenMP builds agree for a counter-based RNG
+        run: |
+          ./build-serial/sqd_rng_reproducibility_dump > serial.txt
+          for nthreads in 1 2 4 8; do
+            OMP_NUM_THREADS=$nthreads ./build/sqd_rng_reproducibility_dump > "omp-$nthreads.txt"
+          done
+
+          # philox4x64 is keyed by work-item index, so it must match the serial
+          # build at every thread count.
+          status=0
+          grep '^philox4x64 ' serial.txt > serial-philox.txt
+          for nthreads in 1 2 4 8; do
+            grep '^philox4x64 ' "omp-$nthreads.txt" > "omp-philox-$nthreads.txt"
+            if diff -u serial-philox.txt "omp-philox-$nthreads.txt"; then
+              echo "OK: philox4x64 matches the serial build at $nthreads thread(s)"
+            else
+              echo "FAIL: philox4x64 differs from the serial build at $nthreads thread(s)"
+              status=1
+            fi
+          done
+
+          # An ordinary engine is seeded per thread rather than keyed per item, so
+          # it agrees with the serial build at one thread and must diverge beyond
+          # that.  Checking both halves also keeps the comparison from silently
+          # becoming vacuous: a dump that never reached the parallel path would
+          # match at every thread count, and one that ignored the serial
+          # preamble would match at none.
+          grep '^mt19937 ' serial.txt > serial-mt.txt
+          grep '^mt19937 ' omp-1.txt > omp-mt-1.txt
+          if diff -u serial-mt.txt omp-mt-1.txt; then
+            echo "OK: mt19937 matches the serial build at 1 thread"
+          else
+            echo "FAIL: mt19937 differs from the serial build at 1 thread"
+            status=1
+          fi
+          grep '^mt19937 ' omp-4.txt > omp-mt-4.txt
+          if cmp -s serial-mt.txt omp-mt-4.txt; then
+            echo "FAIL: mt19937 matched at 4 threads; the parallel path looks inactive"
+            status=1
+          else
+            echo "OK: mt19937 differs at 4 threads, as expected"
+          fi
+
+          # philox must actually have been compiled in, or the diffs above
+          # compared two empty files.
+          if [ ! -s serial-philox.txt ]; then
+            echo "FAIL: no philox4x64 output; std::philox_engine was not compiled in"
+            status=1
+          fi
+          exit $status

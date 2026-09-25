@@ -42,6 +42,8 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
+# Second build tree, used to compare a serial build against an OpenMP one.
+build-serial/
 develop-eggs/
 dist/
 downloads/

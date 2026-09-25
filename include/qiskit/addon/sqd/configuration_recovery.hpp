@@ -178,10 +178,10 @@ void _bipartite_bitstring_correcting(
 /// output differs from a purely sequential run.  The degree of reproducibility
 /// depends on the generator:
 ///
-///   - A counter-based engine (one with `set_counter`, such as the C++26
-///     `std::philox_engine`) is keyed by bitstring index, so the result --
-///     including the order of the returned vectors -- is identical for any
-///     number of threads.
+///   - A counter-based engine (one whose `set_counter` accepts its counter
+///     type, such as the C++26 `std::philox_engine`) is keyed by bitstring
+///     index, so the result -- including the order of the returned vectors --
+///     is identical for any number of threads.
 ///   - Any other engine must be seedable (have `seed()`); each thread then uses
 ///     an independently seeded copy.  Results are valid but depend on the
 ///     thread count.  A generator that is neither counter-based nor seedable is
@@ -277,7 +277,8 @@ template <
         internal::is_counter_based_rng_v<RNGType> ||
             internal::is_seedable_rng_v<RNGType>,
         "Under OpenMP, recover_configurations requires an RNG that is either "
-        "counter-based (has set_counter, e.g. std::philox_engine) or seedable "
+        "counter-based (set_counter accepts its counter type, e.g. "
+        "std::philox_engine) or seedable "
         "(has seed()); a concept-only uniform_random_bit_generator is supported "
         "only in the serial (non-OpenMP) build."
     );
@@ -320,7 +321,47 @@ template <
     }
 #else
     std::pair<std::vector<std::size_t>, std::vector<double>> scratch;
+    // This mirrors the OpenMP path above step for step, so that a serial build
+    // agrees with an OpenMP one: the base seed is drawn the same way, and the
+    // generator is then keyed or re-seeded exactly as a single thread would be.
+    // For a counter-based engine that gives agreement at any thread count, since
+    // a work item's stream depends only on its index.  For an ordinary engine it
+    // gives agreement at one thread -- the case worth having, because it is the
+    // reference point for debugging a parallel run -- while two or more threads
+    // still differ by construction, each drawing from its own seeded copy.
+    //
+    // No test covers this: the two paths are selected by `_OPENMP` at compile
+    // time, so no single binary can compare them, and a golden value cannot
+    // stand in because `std::discrete_distribution` consumes an
+    // implementation-defined number of draws, making the specific bitstrings
+    // unportable across standard libraries.  Two builds of the *same* standard
+    // library are diffed in CI instead; see the `openmp-tests` job.
+    const std::uint64_t base_seed =
+        static_cast<std::uint64_t>(rng()) ^ (static_cast<std::uint64_t>(rng()) << 32);
+    if constexpr (
+        !internal::is_counter_based_rng_v<RNGType> &&
+        internal::is_seedable_rng_v<RNGType>
+    ) {
+        // The thread id an OpenMP build would see here is 0, so this is the
+        // `omp_get_thread_num() + 1` seed of that path with the id fixed at 0.
+        // Seedability is required because a generator that has no `seed()` is
+        // accepted only in a serial build, so there is no OpenMP output for it
+        // to agree with in the first place.
+        rng.seed(
+            static_cast<typename RNGType::result_type>(
+                base_seed + 0x9e3779b97f4a7c15ULL
+            )
+        );
+    }
     for (std::size_t i = 0; i < bitstrings.size(); ++i) {
+        if constexpr (internal::is_counter_based_rng_v<RNGType>) {
+            // Keying is effectively free even though nothing here is parallel:
+            // `set_counter` invalidates the engine's output buffer, and a loop
+            // that draws continuously regenerates a block on its next draw
+            // regardless, so the cost is moved rather than added (measured at
+            // 0.05% on 100,000 bitstrings).
+            internal::key_counter_based_rng(rng, base_seed, i);
+        }
         BitstringType corrected_bitstring = bitstrings[i];
         internal::_bipartite_bitstring_correcting(
             corrected_bitstring, probs_table, num_elec, scratch, rng

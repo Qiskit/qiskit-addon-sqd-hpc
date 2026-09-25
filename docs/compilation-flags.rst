@@ -37,6 +37,13 @@ This library relies on IEEE 754 floating-point semantics.  **The use of** ``-ffa
 
 The related flag ``-ffinite-math-only`` (which is also implied by ``-ffast-math``) is a narrower assertion that no NaN or infinite values arise.  When it is in effect (i.e., when ``__FINITE_MATH_ONLY__`` is defined to a nonzero value), the library omits the now-redundant NaN and infinity checks but is otherwise expected to behave correctly.
 
+How to enable OpenMP
+--------------------
+
+This library is header-only and contains OpenMP-parallelized code paths that are compiled only when the consumer enables OpenMP (for example, ``-fopenmp`` with GCC or Clang).  No library-specific macro is needed: the parallel paths are guarded by the ``_OPENMP`` macro that OpenMP-capable compilers predefine, and a serial build results if OpenMP is absent.
+
+Enabling OpenMP can affect the numerical results of routines that consume randomness, because the parallel code paths draw from per-work-item random streams rather than sequentially from the caller's generator.  With a counter-based generator the results are unchanged.  With any other generator they are unchanged on one thread and depend on the thread count beyond that.  See :doc:`random-number-generation` for what is and is not reproducible.
+
 Concepts (C++20 and later)
 --------------------------
 
