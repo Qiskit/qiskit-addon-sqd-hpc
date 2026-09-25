@@ -33,7 +33,10 @@
 //
 // What a counter-based engine must provide for the strong tier:
 //
-//   * `result_type`, and `seed(result_type)` to set its key;
+//   * `result_type`, and `seed(result_type)` to set its key.  The key space is
+//     bounded by the engine's `word_size` when it declares one, which may be
+//     narrower than `result_type` (std::philox4x32: 64-bit result_type, 32-bit
+//     words) -- see `key_bits_of`;
 //   * a counter type, either named as a nested `counter_type` or (the standard
 //     shape) implied by a static `word_count` alongside `result_type`, in which
 //     case it is `std::array<result_type, word_count>`;
@@ -47,6 +50,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
@@ -105,6 +109,33 @@ struct counter_type_of<
     using type = std::array<typename R::result_type, R::word_count>;
 };
 
+/// Trait: how many bits of key the engine actually uses.
+///
+/// This is *not* `sizeof(result_type) * 8`.  A counter-based engine's key and
+/// counter words are `word_size` bits wide, and `word_size` may be narrower than
+/// the type that carries them: `std::philox4x32` has a 64-bit `result_type` but a
+/// 32-bit `word_size`, and its `seed()` reduces the key mod `2^word_size`.  Using
+/// the type's width instead would let two base seeds that differ only above
+/// `word_size` key the *same* substream.
+///
+/// An engine exposing `word_size` is taken at its word; otherwise the carrier
+/// type's width is the best available bound.
+template <typename R, typename = void>
+struct key_bits_of {
+    /// Fallback: the full width of the type carrying the key.
+    static constexpr int value = static_cast<int>(sizeof(typename R::result_type) * 8);
+};
+
+/// Specialization for an engine that declares its own word width.
+template <typename R>
+struct key_bits_of<
+    R,
+    std::enable_if_t<std::is_integral<std::remove_cv_t<decltype(R::word_size)>>::value>
+> {
+    /// The engine's own word width, which bounds its key space.
+    static constexpr int value = static_cast<int>(R::word_size);
+};
+
 /// Trait: is `R` a counter-based engine, i.e. addressable by counter?
 ///
 /// Detected by whether `set_counter` is *callable* with the engine's counter
@@ -148,21 +179,43 @@ struct is_seedable_rng<
 template <typename R>
 inline constexpr bool is_seedable_rng_v = is_seedable_rng<R>::value;
 
-/// Mix a 64-bit seed down to `T` so that every input bit can affect the result,
-/// even when `T` is narrower than 64 bits.
+/// Mix a 64-bit seed into the low `bits` bits of `T`, so that every input bit
+/// can affect the result even when the engine's key space is narrower than 64
+/// bits.
 ///
-/// A plain `static_cast` would discard the high half for a 32-bit-word engine,
-/// so two seeds differing only above bit 32 would collide.  This is the
-/// SplitMix64 finalizer, whose avalanche folds the high bits down before the
-/// narrowing conversion.  It is used for the *key* only -- never for the item
-/// index, which must stay an exact address (see `substream_keying::key`).
+/// Two separate narrowings are at play, and only doing both is correct:
+///
+///   * the SplitMix64 finalizer, whose avalanche spreads every input bit across
+///     all 64 output bits; and
+///   * an explicit XOR-fold of everything above `bits` back down into the low
+///     `bits`, before the truncating conversion.
+///
+/// The XOR-fold is not redundant with the avalanche, which is the subtle part.
+/// SplitMix64 ends in `z ^= z >> 31`, so its output bits are already mixed -- but
+/// mixed is not the same as *reduced*, and the engine reduces the key mod
+/// `2^bits` regardless.  Two seeds can avalanche to values that agree in their
+/// low `bits` and differ only above: masking alone then keys the identical
+/// substream.  (Measured: base seeds 149694 and 149778 produce bit-identical
+/// `std::philox4x32` streams if the high half is merely dropped or masked off.)
+/// Folding the discarded part in first makes it contribute instead.
+///
+/// When `bits` is at least 64 nothing is discarded and this is exactly the
+/// SplitMix64 finalizer, so engines with 64-bit words are unaffected.
+///
+/// Used for the *key* only -- never for the item index, which must stay an exact
+/// address (see `substream_keying::key`).
 template <typename T>
-constexpr T fold_seed_to(std::uint64_t z) noexcept
+constexpr T fold_seed_to_bits(std::uint64_t z, int bits) noexcept
 {
     z += 0x9e3779b97f4a7c15ULL;
     z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
     z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
     z = z ^ (z >> 31);
+    if (bits < 64) {
+        // Fold the part that seed() would discard back into the part it keeps.
+        z ^= z >> bits;
+        z &= (static_cast<std::uint64_t>(1) << bits) - 1;
+    }
     return static_cast<T>(z);
 }
 
@@ -198,22 +251,49 @@ struct substream_keying {
     static void key(R &engine, std::uint64_t base_seed, std::uint64_t index)
     {
         using result_type = typename R::result_type;
+        using counter_type = typename counter_type_of<R>::type;
         static_assert(
             is_seedable_rng_v<R>,
             "A counter-based engine must also provide seed(result_type) to set "
             "its key; specialize substream_keying for an engine that does not."
         );
-        // Note the key space is the engine's own, not 64 bits: for
-        // std::philox_engine the scalar seed() sets K_0 and zeros the remaining
-        // key words, so it reaches `word_size` bits.
-        engine.seed(fold_seed_to<result_type>(base_seed));
-        typename counter_type_of<R>::type counter{};
+        // A single-word counter would make `index` the *entire* counter below,
+        // giving consecutive items a stride of one counter value -- immediate
+        // overlap, which is exactly what keying by counter exists to prevent.
+        // No standard philox is shaped that way, but this is the documented
+        // generic extension point, so an engine that is must specialize
+        // `substream_keying` rather than silently alias.
+        static_assert(
+            std::tuple_size<counter_type>::value >= 2,
+            "A single-word counter leaves no room to separate substreams; "
+            "specialize substream_keying for such an engine."
+        );
+        // The key space is the engine's own, not 64 bits, and not the width of
+        // `result_type` either: for std::philox_engine the scalar seed() sets K_0
+        // and zeros the remaining key words, so it reaches `word_size` bits --
+        // which for philox4x32 is 32, half of its 64-bit result_type.  See
+        // `key_bits_of`.
+        constexpr int key_bits = key_bits_of<R>::value;
+        engine.seed(fold_seed_to_bits<result_type>(base_seed, key_bits));
+        counter_type counter{};
         // `index` is an address, not entropy: it is assigned verbatim so that
         // distinct items are *guaranteed* distinct substreams.  Hashing it here
         // would reduce that guarantee to a birthday argument, which is the very
         // thing keying by counter avoids.
+        //
+        // The bound is the engine's word width, not the width of `result_type`:
+        // `set_counter` takes each word mod `2^word_size`, so for philox4x32 the
+        // indices 7 and 7 + 2^32 name the same substream even though both fit a
+        // 64-bit result_type.  `recover_configurations` enforces this up front
+        // too, since assert() vanishes under NDEBUG and a release build must not
+        // alias silently; this remains as the backstop for other callers.
+        // Written as a mask rather than `1 << key_bits` so the expression is
+        // well-formed at key_bits == 64, where the shift would overflow.
+        constexpr std::uint64_t index_mask =
+            key_bits >= 64 ? ~static_cast<std::uint64_t>(0)
+                           : (static_cast<std::uint64_t>(1) << (key_bits % 64)) - 1;
         assert(
-            static_cast<std::uint64_t>(static_cast<result_type>(index)) == index &&
+            (index & ~index_mask) == 0 &&
             "work-item index does not fit in the engine's word; substreams would alias"
         );
         counter[0] = static_cast<result_type>(index);
@@ -231,6 +311,30 @@ void key_counter_based_rng(RNGType &engine, std::uint64_t base_seed, std::size_t
     substream_keying<RNGType>::key(
         engine, base_seed, static_cast<std::uint64_t>(index)
     );
+}
+
+/// How many distinct substreams `RNGType` can address, or 0 for "more than any
+/// `std::size_t` can count".
+///
+/// A caller keying work items by index uses this to reject a workload too large
+/// to key *before* starting it.  The in-`key` assert cannot serve that purpose on
+/// its own: it vanishes under NDEBUG, and it fires inside the parallel region
+/// where throwing is not an option.
+///
+/// Returning 0 for the unbounded case keeps the comparison honest -- computing
+/// `1 << 64` to compare against would be undefined behavior.
+template <typename RNGType>
+constexpr std::size_t max_substreams() noexcept
+{
+    constexpr int bits = key_bits_of<RNGType>::value;
+    // `if constexpr`, not a plain `if`: on the unbounded branch the shift below
+    // would be ill-formed (shift count >= width), and a runtime `if` still
+    // compiles both arms.
+    if constexpr (bits >= static_cast<int>(sizeof(std::size_t) * 8)) {
+        return 0; // no std::size_t index can exceed the engine's word
+    } else {
+        return static_cast<std::size_t>(1) << bits;
+    }
 }
 
 } // namespace internal

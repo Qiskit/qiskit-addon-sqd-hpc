@@ -9,12 +9,14 @@ What "reproducible" means here
 
 A single-threaded run is reproducible in the ordinary way: the same generator, seeded the same way, yields the same result.
 
-Parallelism complicates this, because a work item's randomness must not depend on which thread happened to run it.  Rather than drawing from the caller's generator sequentially -- which would serialize the loop and make results depend on scheduling -- the parallel code paths give each unit of work its own independent random stream, derived from the caller's generator.  How reproducible the result is then depends on what kind of generator was supplied.
+Parallelism complicates this, because a work item's randomness must not depend on which thread happened to run it.  Rather than drawing from the caller's generator sequentially -- which would serialize the loop and make results depend on scheduling -- a parallelized routine gives each unit of work its own independent random stream, derived from the caller's generator.  How reproducible the result is then depends on what kind of generator was supplied.
+
+At present ``recover_configurations`` is the only routine with a parallel code path, so it is the only one to which the tiers below apply.  The other routines that consume randomness draw from the caller's generator sequentially and are reproducible in the ordinary single-threaded way, whether or not OpenMP is enabled.  The mechanism is written to be reusable, so further routines may adopt it in a later release.
 
 Counter-based engines
 ---------------------
 
-A counter-based generator computes its output directly from a counter, so it can be positioned at an arbitrary point in its own output rather than having to be advanced there one draw at a time.  This library exploits that by assigning each work item a stream determined by its *index*, so item ``i`` draws the same values no matter which thread computes it.  **Results are then identical for any number of threads.**
+A counter-based generator computes its output directly from a counter, so it can be positioned at an arbitrary point in its own output rather than having to be advanced there one draw at a time.  A parallelized routine exploits that by assigning each work item a stream determined by its *index*, so item ``i`` draws the same values no matter which thread computes it.  **Results are then identical for any number of threads.**
 
 The C++26 `std::philox_engine <https://en.cppreference.com/w/cpp/numeric/random/philox_engine>`__ is such an engine.  The support is not specific to it: a generator qualifies by naming a counter type -- either a nested ``counter_type``, or a static ``word_count`` from which the standard ``std::array<result_type, word_count>`` shape is derived -- and accepting that type in ``set_counter``, following ``std::philox_engine``'s convention that the counter is supplied in reverse word order.
 

@@ -188,6 +188,13 @@ void _bipartite_bitstring_correcting(
 ///     rejected at compile time under OpenMP (it remains usable in a serial
 ///     build).
 ///
+/// `rng` is left in a substantially different state than a purely sequential
+/// implementation would leave it, in *both* builds: this function draws from it
+/// to derive a base seed and then re-seeds it (and, for a counter-based engine,
+/// re-keys it per work item), so it is not merely advanced by the number of
+/// values consumed.  Callers who continue to draw from the same generator
+/// afterwards will see a different sequence than in releases before this change.
+///
 /// @param[in] bitstrings A container (e.g., `std::vector`) of bitstrings.
 /// @param[in] probabilities A 1D array specifying a probability distribution over
 ///     the bitstrings.  Must contain the same number of elements as `bitstrings`.
@@ -251,12 +258,82 @@ template <
 
     using BitstringType = typename BitstringVectorType::value_type;
 
-    // Validate bitstring lengths up front, so the correction loop below (which
-    // may run in parallel) needs no exception-throwing control flow.
+    // Validate every input up front, so the correction loop below (which may run
+    // in parallel) needs no exception-throwing control flow.  This is a
+    // correctness requirement and not merely tidiness: throwing out of an OpenMP
+    // structured block is undefined, and libgomp terminates the process -- so a
+    // condition detected inside the loop would abort rather than raise.
+    //
+    // Two things are checked per bitstring: its length, and that the correction
+    // it needs is actually possible.  The latter is what
+    // `NoReplacementSampler::operator()` would otherwise discover mid-loop.
     for (const auto &bitstring : bitstrings) {
         if (bitstring.size() != 2 * partition_size) {
             QKA_SQD_THROW_INVALID_ARGUMENT_(
                 "Bitstring length must be twice the number of orbitals."
+            );
+        }
+
+        // Can each spin sector reach its target Hamming weight?  Correction flips
+        // `num_flip` bits chosen without replacement among the eligible bits --
+        // those currently equal to `flip` -- weighted by `probs_table`.  A bit
+        // whose weight is zero can never be chosen, so the requirement is that at
+        // least `num_flip` eligible bits carry a nonzero weight.
+        //
+        // This mirrors `_bipartite_bitstring_correcting` exactly, so it is a
+        // prediction rather than an approximation: the quantities involved are
+        // fixed by (bitstring, probs_table, num_elec) and no sampling is
+        // involved.  Zero weights are ordinary in practice, not pathological --
+        // `_p_flip_0_to_1` returns exactly 0.0 for an orbital whose average
+        // occupancy is 0.0, which is any orbital empty in every sample.
+        //
+        // Checking it here also keeps an all-zero weight vector away from
+        // std::discrete_distribution's constructor, which requires a positive
+        // sum: libstdc++ built with _GLIBCXX_ASSERTIONS (the default on several
+        // distributions) aborts there, in serial builds too.
+        const auto n_right_bits =
+            internal::mask_lower_n_bits(bitstring, partition_size).count();
+        const std::array<std::uint64_t, 2> hamming_weight{
+            static_cast<std::uint64_t>(n_right_bits),
+            static_cast<std::uint64_t>(bitstring.count() - n_right_bits)
+        };
+        std::uint64_t offset = 0;
+        for (int s = 0; s < 2; ++s) {
+            if (hamming_weight[s] != num_elec[s]) {
+                const bool flip = bool(hamming_weight[s] > num_elec[s]);
+                const std::uint64_t num_flip = flip ? hamming_weight[s] - num_elec[s]
+                                                    : num_elec[s] - hamming_weight[s];
+                std::uint64_t num_eligible = 0;
+                for (std::size_t j = 0; j < partition_size; ++j) {
+                    if (bitstring[j + offset] == flip && probs_table[s][flip][j] > 0) {
+                        ++num_eligible;
+                    }
+                }
+                if (num_flip > num_eligible) {
+                    // Same type and message as the sampler would have raised, so
+                    // the observable contract is unchanged for serial callers.
+                    QKA_SQD_THROW_RUNTIME_ERROR_(
+                        "Cannot draw more samples than number of nonzero weights."
+                    );
+                }
+            }
+            offset += partition_size;
+        }
+    }
+
+    // A counter-based engine keys each work item by its index, and that index must
+    // fit in one of the engine's counter words -- `set_counter` reduces each word
+    // mod 2^word_size, so beyond that two items would name the same substream and
+    // draw identical randomness.  Reject such a workload here rather than inside
+    // the loop: an assert would vanish under NDEBUG, and the loop may be parallel,
+    // where throwing is not available.  `max_substreams` returns 0 when no index
+    // can overflow the engine's word, which is the usual case.
+    if constexpr (internal::is_counter_based_rng_v<RNGType>) {
+        constexpr std::size_t substream_capacity = internal::max_substreams<RNGType>();
+        if (substream_capacity != 0 && bitstrings.size() > substream_capacity) {
+            QKA_SQD_THROW_INVALID_ARGUMENT_(
+                "Too many bitstrings to key distinct random substreams for this "
+                "generator; its counter word is too narrow."
             );
         }
     }

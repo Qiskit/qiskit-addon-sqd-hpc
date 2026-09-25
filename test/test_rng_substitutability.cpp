@@ -25,6 +25,8 @@
 
 #include "doctest.h"
 
+#include "mock_cbrng.hpp"
+
 #include "qiskit/addon/sqd/configuration_recovery.hpp"
 #include "qiskit/addon/sqd/internal/parallel-rng.hpp"
 #include "qiskit/addon/sqd/subsampling.hpp"
@@ -115,195 +117,6 @@ std::pair<std::vector<std::bitset<8>>, std::vector<double>> run_recover(RNGType 
     return recover_configurations(bitstrings, probabilities, occs, {2, 2}, rng);
 }
 
-// Two mock counter-based generators, shaped deliberately *unlike*
-// std::philox_engine, so the substream-keying abstraction is validated against
-// something other than the single engine it was written against.  Neither needs
-// a __cpp_lib_philox_engine gate, so the counter-based path gets exercised on
-// every row of the CI matrix rather than only the C++26 one.
-//
-// Both are real (if simple) counter-based generators in the
-// Salmon-Moraes-Dror-Shaw sense: a stateless keyed bijection of the counter,
-// buffered a block at a time.  The mixing is a SplitMix64 round rather than a
-// Philox round -- enough to be well-distributed, and the point here is the
-// interface, not the statistical quality.
-
-// Mock 1: names its own `counter_type`, carries a *full-width* key (Threefry and
-// ARS do; Philox's key is half the counter width), and spells `set_counter` as a
-// member *template*.  That template is the interesting part: taking the address
-// of a member template is ill-formed, so the old `decltype(&R::set_counter)`
-// detection silently classified this engine as ordinary and dropped it to the
-// weaker thread-count-dependent tier with no diagnostic.
-class MockCBRNGTemplate
-{
-  public:
-    using result_type = std::uint64_t;
-    static constexpr std::size_t counter_words = 4;
-    using counter_type = std::array<result_type, counter_words>;
-
-  private:
-    counter_type counter_{};
-    counter_type key_{}; // full-width key, unlike Philox's half-width one
-    std::array<result_type, counter_words> buffer_{};
-    std::size_t index_ = counter_words; // empty: refill on first draw
-
-    static result_type mix(result_type z)
-    {
-        z += 0x9e3779b97f4a7c15ULL;
-        z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
-        z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
-        return z ^ (z >> 31);
-    }
-
-    void generate_block()
-    {
-        // Every output word must depend on the *whole* counter and key, which is
-        // what a real CBRNG round function does.  Mixing word i from counter word
-        // i alone would leave outputs blind to the counter words that keying
-        // actually writes to.
-        result_type acc = 0;
-        for (std::size_t i = 0; i < counter_words; ++i) {
-            acc = mix(acc ^ counter_[i]);
-            acc = mix(acc ^ key_[i]);
-        }
-        for (std::size_t i = 0; i < counter_words; ++i) {
-            buffer_[i] = mix(acc ^ mix(static_cast<result_type>(i)));
-        }
-        // Advance the counter as one big integer, low word first.
-        for (std::size_t i = 0; i < counter_words; ++i) {
-            if (++counter_[i] != 0) {
-                break;
-            }
-        }
-        index_ = 0;
-    }
-
-  public:
-    explicit MockCBRNGTemplate(result_type s = 0)
-    {
-        seed(s);
-    }
-    void seed(result_type s)
-    {
-        key_.fill(0);
-        key_[0] = s;
-        counter_.fill(0);
-        index_ = counter_words;
-    }
-    // A member *template*, accepting any array-like counter.
-    template <typename CounterLike>
-    void set_counter(const CounterLike &c)
-    {
-        // Follow std::philox_engine: reversed word order, so c[0] is the most
-        // significant word.
-        for (std::size_t i = 0; i < counter_words; ++i) {
-            counter_[i] = c[counter_words - 1 - i];
-        }
-        index_ = counter_words; // refill on next draw
-    }
-    static constexpr result_type min()
-    {
-        return 0;
-    }
-    static constexpr result_type max()
-    {
-        return UINT64_MAX;
-    }
-    result_type operator()()
-    {
-        if (index_ >= counter_words) {
-            generate_block();
-        }
-        return buffer_[index_++];
-    }
-};
-
-// Mock 2: the standard shape (a static `word_count`, no nested `counter_type`,
-// so the counter type is *derived* as std::array<result_type, word_count>), but
-// with an *overloaded* `set_counter`.  Taking the address of an overload set is
-// also ill-formed, so this is the second way the old detection failed silently.
-// Its 32-bit result_type additionally exercises the seed-narrowing path in
-// fold_seed_to, which nothing else in the suite reaches.
-class MockCBRNGOverloaded
-{
-  public:
-    using result_type = std::uint32_t;
-    static constexpr std::size_t word_count = 4;
-
-  private:
-    std::array<result_type, word_count> counter_{};
-    result_type key_ = 0;
-    std::array<result_type, word_count> buffer_{};
-    std::size_t index_ = word_count;
-
-    static std::uint64_t mix(std::uint64_t z)
-    {
-        z += 0x9e3779b97f4a7c15ULL;
-        z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
-        z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
-        return z ^ (z >> 31);
-    }
-
-    void generate_block()
-    {
-        // As in MockCBRNGTemplate: every output word depends on the whole counter.
-        std::uint64_t acc = key_;
-        for (std::size_t i = 0; i < word_count; ++i) {
-            acc = mix(acc ^ (static_cast<std::uint64_t>(counter_[i]) << 32) ^ i);
-        }
-        for (std::size_t i = 0; i < word_count; ++i) {
-            buffer_[i] = static_cast<result_type>(mix(acc ^ i));
-        }
-        for (std::size_t i = 0; i < word_count; ++i) {
-            if (++counter_[i] != 0) {
-                break;
-            }
-        }
-        index_ = 0;
-    }
-
-  public:
-    explicit MockCBRNGOverloaded(result_type s = 0)
-    {
-        seed(s);
-    }
-    void seed(result_type s)
-    {
-        key_ = s;
-        counter_.fill(0);
-        index_ = word_count;
-    }
-    // Overload set: the array form is what the keying helper calls, but the
-    // presence of a second overload is what breaks address-of detection.
-    void set_counter(const std::array<result_type, word_count> &c)
-    {
-        for (std::size_t i = 0; i < word_count; ++i) {
-            counter_[i] = c[word_count - 1 - i];
-        }
-        index_ = word_count;
-    }
-    void set_counter(result_type low_word)
-    {
-        counter_.fill(0);
-        counter_[0] = low_word;
-        index_ = word_count;
-    }
-    static constexpr result_type min()
-    {
-        return 0;
-    }
-    static constexpr result_type max()
-    {
-        return UINT32_MAX;
-    }
-    result_type operator()()
-    {
-        if (index_ >= word_count) {
-            generate_block();
-        }
-        return buffer_[index_++];
-    }
-};
-
 } // namespace
 
 // Trait assertions.  These pin the classification itself, which no test
@@ -336,6 +149,41 @@ static_assert(
     >,
     "absent a nested counter_type, the standard array shape must be derived"
 );
+// The mock that separates word width from carrier width, which is the shape that
+// makes a wrongly-narrowed seed fold observable.
+static_assert(
+    tr::is_counter_based_rng_v<MockCBRNGNarrowWord>,
+    "MockCBRNGNarrowWord is counter-based"
+);
+// The trait must report the engine's *word* width, not the width of the type
+// carrying it.  Getting this backwards is the bug the fold and the index check
+// both depended on.
+static_assert(
+    tr::key_bits_of<MockCBRNGNarrowWord>::value == 32,
+    "an engine declaring word_size must be taken at its word"
+);
+static_assert(
+    sizeof(MockCBRNGNarrowWord::result_type) * 8 == 64,
+    "...and that word width must differ from the carrier width, or this mock "
+    "would not be testing anything"
+);
+// The engines with no word_size fall back to the carrier width.
+static_assert(
+    tr::key_bits_of<MockCBRNGTemplate>::value == 64,
+    "absent word_size, the carrier width is the bound"
+);
+static_assert(
+    tr::key_bits_of<MockCBRNGOverloaded>::value == 32,
+    "absent word_size, the carrier width is the bound"
+);
+#if defined(__cpp_lib_philox_engine)
+// The real engine that motivated all of this: 64-bit result_type, 32-bit words.
+static_assert(
+    tr::key_bits_of<std::philox4x32>::value == 32,
+    "philox4x32 keys 32 bits despite its 64-bit result_type"
+);
+static_assert(tr::key_bits_of<std::philox4x64>::value == 64, "philox4x64 keys 64 bits");
+#endif
 // Ordinary engines must stay in the seedable tier.
 static_assert(
     !tr::is_counter_based_rng_v<std::mt19937>, "mt19937 is not counter-based"
@@ -372,8 +220,13 @@ static_assert(
 // the counter-based std::philox_engine joins the same list.
 #if defined(__cpp_lib_philox_engine)
 #define RNG_PHILOX_IF_AVAILABLE , std::philox4x64
+// philox4x32 separately: it is the standard engine whose word_size (32) is
+// narrower than its result_type (64 bits), so it is the real-engine counterpart
+// to MockCBRNGNarrowWord and belongs in the cases about key width.
+#define RNG_PHILOX32_IF_AVAILABLE , std::philox4x32
 #else
 #define RNG_PHILOX_IF_AVAILABLE
+#define RNG_PHILOX32_IF_AVAILABLE
 #endif
 
 // A deliberately diverse set: both result_type widths (32- and 64-bit), the
@@ -500,8 +353,8 @@ TEST_CASE_TEMPLATE_DEFINE(
     }
 }
 TEST_CASE_TEMPLATE_INVOKE(
-    substream_distinctness, MockCBRNGTemplate,
-    MockCBRNGOverloaded RNG_PHILOX_IF_AVAILABLE
+    substream_distinctness, MockCBRNGTemplate, MockCBRNGOverloaded,
+    MockCBRNGNarrowWord RNG_PHILOX_IF_AVAILABLE RNG_PHILOX32_IF_AVAILABLE
 );
 
 TEST_CASE_TEMPLATE_DEFINE(
@@ -547,22 +400,79 @@ TEST_CASE_TEMPLATE_DEFINE(
     }
 }
 TEST_CASE_TEMPLATE_INVOKE(
-    substream_no_overlap, MockCBRNGTemplate, MockCBRNGOverloaded RNG_PHILOX_IF_AVAILABLE
+    substream_no_overlap, MockCBRNGTemplate, MockCBRNGOverloaded,
+    MockCBRNGNarrowWord RNG_PHILOX_IF_AVAILABLE RNG_PHILOX32_IF_AVAILABLE
 );
 
 // The seed-narrowing path.  MockCBRNGOverloaded has a 32-bit result_type, so a
 // plain static_cast of the 64-bit base seed would discard its high half and two
-// seeds differing only above bit 32 would key identical streams.  fold_seed_to
-// mixes first, so they do not.  Nothing else in the suite reaches this path.
-TEST_CASE("a narrow-word engine still sees the whole 64-bit base seed")
+// seeds differing only above bit 32 would key identical streams.
+// fold_seed_to_bits mixes first, so they do not.
+TEST_CASE_TEMPLATE_DEFINE(
+    "a narrow-word engine still sees the whole 64-bit base seed", RNGType,
+    narrow_word_seed
+)
 {
     const std::uint64_t low_only = 0x00000000abcdef01ULL;
     const std::uint64_t with_high = 0x12345678abcdef01ULL; // same low 32 bits
 
-    auto a = keyed_streams<MockCBRNGOverloaded>(low_only, {4, 8});
-    auto b = keyed_streams<MockCBRNGOverloaded>(with_high, {4, 8});
+    auto a = keyed_streams<RNGType>(low_only, {4, 8});
+    auto b = keyed_streams<RNGType>(with_high, {4, 8});
     CHECK(a != b);
 }
+TEST_CASE_TEMPLATE_INVOKE(
+    narrow_word_seed, MockCBRNGOverloaded, MockCBRNGNarrowWord RNG_PHILOX32_IF_AVAILABLE
+);
+
+// The specific seed pair that the earlier implementation keyed to *identical*
+// streams, and why a generic "two different seeds differ" case did not catch it.
+//
+// The old code folded the base seed to `sizeof(result_type)` bits rather than to
+// the engine's `word_size`.  For an engine whose words are narrower than its
+// result_type -- philox4x32, and MockCBRNGNarrowWord here -- that fold is a no-op
+// and seed() then simply truncates, so any two seeds agreeing in their low 32
+// bits collide.
+//
+// Masking the mixed value to word_size instead of folding it does *not* fix this,
+// which is why the pair is pinned explicitly: the SplitMix64 finalizer ends in
+// `z ^= z >> 31`, so these two seeds avalanche to values that agree in their low
+// 32 bits and differ only above.  Masking keeps exactly the bits that already
+// match; only XOR-folding the discarded half back down separates them.
+TEST_CASE_TEMPLATE_DEFINE(
+    "seeds colliding in the low word still key distinct substreams", RNGType,
+    narrow_word_seed_collision
+)
+{
+    // Chosen so that SplitMix64(a) and SplitMix64(b) share their low 32 bits.
+    constexpr std::uint64_t seed_a = 149694;
+    constexpr std::uint64_t seed_b = 149778;
+
+    // Precondition: this pair is only interesting if the mixed values really do
+    // collide in the low word.  If a future change to the mixer breaks that, this
+    // case would silently stop testing anything.
+    const auto mixed_a =
+        Qiskit::addon::sqd::internal::fold_seed_to_bits<std::uint64_t>(seed_a, 64);
+    const auto mixed_b =
+        Qiskit::addon::sqd::internal::fold_seed_to_bits<std::uint64_t>(seed_b, 64);
+    REQUIRE(mixed_a != mixed_b);
+    REQUIRE_MESSAGE(
+        (mixed_a & 0xffffffffULL) == (mixed_b & 0xffffffffULL),
+        "the seed pair no longer collides in the low 32 bits, so this case would "
+        "pass for the wrong reason; pick a new pair"
+    );
+
+    auto a = keyed_streams<RNGType>(seed_a, {4, 16});
+    auto b = keyed_streams<RNGType>(seed_b, {4, 16});
+    CHECK(a != b);
+    // Not merely different somewhere: the very first output of each substream must
+    // differ, since a work item may draw only once.
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        CHECK(a[i][0] != b[i][0]);
+    }
+}
+TEST_CASE_TEMPLATE_INVOKE(
+    narrow_word_seed_collision, MockCBRNGNarrowWord RNG_PHILOX32_IF_AVAILABLE
+);
 
 // The per-thread seeding path, for an engine that is not counter-based.
 //

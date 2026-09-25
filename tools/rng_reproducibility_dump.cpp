@@ -59,8 +59,8 @@ void dump(const char *label)
     };
 
     // A constant seed is the entire point: the two builds must be compared at
-    // the same starting state.
-    // NOLINTNEXTLINE(bugprone-random-generator-seed)
+    // the same starting state.  (bugprone-random-generator-seed is disabled for
+    // this directory in tools/.clang-tidy.)
     RNGType rng(2024u);
     const auto result = Qiskit::addon::sqd::recover_configurations(
         bitstrings, probs, occs, {2, 2}, rng

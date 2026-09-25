@@ -42,6 +42,13 @@ How to enable OpenMP
 
 This library is header-only and contains OpenMP-parallelized code paths that are compiled only when the consumer enables OpenMP (for example, ``-fopenmp`` with GCC or Clang).  No library-specific macro is needed: the parallel paths are guarded by the ``_OPENMP`` macro that OpenMP-capable compilers predefine, and a serial build results if OpenMP is absent.
 
+Compiler support
+~~~~~~~~~~~~~~~~
+
+The parallel paths are tested with GCC and Clang.  They require an OpenMP implementation that accepts an unsigned loop index in a worksharing construct, which the OpenMP 3.0 specification introduced and which these loops rely on to iterate over a container.
+
+Microsoft Visual C++'s ``/openmp`` switch implements OpenMP 2.0, which does not allow an unsigned index, so building the parallel paths with it is **not supported**.  MSVC's `/openmp:llvm <https://learn.microsoft.com/en-us/cpp/build/reference/openmp-enable-openmp-2-0-support>`__ switch does accept unsigned indices per OpenMP 3.0, but Microsoft documents it as experimental and not available for production code, and it is untested here.  Building with MSVC and no OpenMP switch is fully supported and yields the serial paths, as with any other compiler without OpenMP.
+
 Enabling OpenMP can affect the numerical results of routines that consume randomness, because the parallel code paths draw from per-work-item random streams rather than sequentially from the caller's generator.  With a counter-based generator the results are unchanged.  With any other generator they are unchanged on one thread and depend on the thread count beyond that.  See :doc:`random-number-generation` for what is and is not reproducible.
 
 Concepts (C++20 and later)

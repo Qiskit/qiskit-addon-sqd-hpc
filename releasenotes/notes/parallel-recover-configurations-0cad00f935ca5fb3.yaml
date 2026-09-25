@@ -5,7 +5,10 @@ features:
     parallel when the consumer compiles with OpenMP enabled.  The library
     remains header-only and depends only on the C++ standard library; the
     parallel path is guarded by ``_OPENMP`` and the serial behavior is used
-    otherwise.
+    otherwise.  Inputs are fully validated before any correction begins, so an
+    unsatisfiable request -- one whose target Hamming weight cannot be reached
+    because too few eligible bits carry a nonzero weight -- is reported as an
+    exception rather than part way through the work.
   - |
     Under OpenMP, the random number generator is used to seed independent
     per-work-item streams rather than being drawn from sequentially.  A
