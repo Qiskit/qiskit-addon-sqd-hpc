@@ -40,14 +40,19 @@ upgrade:
     for a given seed differ.  The returned distribution remains a valid
     refinement; only the selection and its ordering change.
   - |
-    ``recover_configurations`` now rejects an unsatisfiable request before it
-    corrects any bitstring, where previously it raised only upon reaching the
-    offending bitstring.  The exception type and message are unchanged, but a
-    caller that caught it can no longer observe a partially advanced generator,
-    and a bitstring of the wrong length is now reported even when it follows
-    bitstrings that would have corrected successfully.
+    A caller that catches the exception from an invalid request sees it raised
+    earlier than before: the generator is no longer partially advanced, and a
+    malformed bitstring is reported even when it follows bitstrings that would
+    have corrected successfully.
   - |
     ``recover_configurations`` leaves ``rng`` in a substantially different state
-    than before: it draws a base seed and then re-seeds the generator, so the
-    number of values consumed is unspecified.  Callers who continue to draw from
-    the same generator afterwards should not rely on its resulting state.
+    than before, in a way that depends on which tier the generator falls into.
+    Either way it first draws two values to form a base seed.  A seedable
+    engine is then re-seeded from that base seed.  A counter-based engine is
+    instead re-keyed and its counter repositioned for each bitstring, so on
+    return it is left keyed to the base seed and positioned at the last
+    bitstring's substream rather than anywhere related to where it started --
+    its original key is gone.  In both cases the number of values consumed is
+    unspecified.  Callers who continue to draw from the same generator
+    afterwards should not rely on its resulting state; pass a copy if the
+    original state matters.

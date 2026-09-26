@@ -271,12 +271,10 @@ constexpr T fold_seed_to_bits(std::uint64_t z, int bits) noexcept
 /// fixed per-item budget can be assumed.  With adjacent counters, item `i`'s
 /// draws `n..2n-1` would be item `i+1`'s first `n` draws, bit for bit.
 ///
-/// One boundary case, for completeness: the counter is one integer modulo
-/// `2^(w*n)`, so the last addressable item (`index == 2^w - 1`) is separated from
-/// item 0 by wraparound rather than by a following neighbor.  It would have to
-/// exhaust its own `2^(w*(n-1))` stride to reach it -- 2^192 counter values for
-/// philox4x64 -- so this bounds that item exactly as the others are bounded, but
-/// by the counter's modulus instead of by the next item's base.
+/// The last addressable item (`index == 2^w - 1`) is the one case where the item
+/// above it is item 0, since the counter is modular: its stride ends by wrapping
+/// rather than at a neighbor's base.  The stride is the same size either way, so
+/// the separation argument above still covers it.
 ///
 /// Specialize this for an engine whose counter is ordered or shaped differently.
 template <typename R, typename = void>
