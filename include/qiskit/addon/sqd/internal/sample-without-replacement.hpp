@@ -60,6 +60,10 @@ class NoReplacementSampler
       : working_weights(weights), dist(working_weights.begin(), working_weights.end())
     {
         std::size_t nonzero_weights = 0;
+        // Accumulated in this same pass to check the *total*, which matters
+        // independently of the per-element checks below: see the overflow test
+        // after the loop.
+        double weight_sum = 0;
         for (auto weight : weights) {
             // Check for any invalid argument
 #if !QKA_SQD_FINITE_MATH_ONLY
@@ -78,7 +82,29 @@ class NoReplacementSampler
             if (weight > 0) {
                 ++nonzero_weights;
             }
+            weight_sum += static_cast<double>(weight);
         }
+
+        // Individually finite weights can still sum to infinity, and that case
+        // must be rejected here rather than left to `operator()`, where it does
+        // not merely give a poor answer -- it fails to terminate.
+        // `std::discrete_distribution` normalizes by the sum, so an infinite sum
+        // makes *every* probability exactly zero; libstdc++ then returns the last
+        // index on every draw.  `operator()`'s retry loop cannot recover, because
+        // its escape hatch is to rebuild the distribution from the surviving
+        // weights, and their sum is still infinite.  The result is an infinite
+        // loop in `for (;;)`.
+        //
+        // Reachable only from weights spanning an extreme dynamic range (a few
+        // values near DBL_MAX suffice).  `recover_configurations`, this class's
+        // only caller in the library, cannot reach it: `_p_flip_*` returns values
+        // in [0, 1], so its sums are bounded by the orbital count.
+#if !QKA_SQD_FINITE_MATH_ONLY
+        if (std::isinf(weight_sum)) {
+            QKA_SQD_THROW_INVALID_ARGUMENT_("Weight array sums to an infinite value");
+        }
+#endif // !QKA_SQD_FINITE_MATH_ONLY
+
         remaining_nonzero_weights = nonzero_weights;
     }
 

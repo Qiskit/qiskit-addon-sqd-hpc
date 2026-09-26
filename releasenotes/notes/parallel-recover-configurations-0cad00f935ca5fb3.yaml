@@ -7,19 +7,47 @@ features:
     parallel path is guarded by ``_OPENMP`` and the serial behavior is used
     otherwise.
   - |
-    Under OpenMP, the random number generator is used to seed independent
-    per-work-item streams rather than being drawn from sequentially.  A
-    counter-based engine (one with ``set_counter``, such as the C++26
-    ``std::philox_engine``) is keyed by bitstring index, so the result is
-    identical for any number of threads; any other engine must be seedable and
-    is copied per thread, giving results that are valid but depend on the thread
-    count.  A generator that is neither counter-based nor seedable is rejected at
-    compile time under OpenMP but remains usable in a serial build.
+    ``recover_configurations`` validates all of its inputs before it corrects
+    any bitstring.  An unsatisfiable request -- one whose target Hamming weight
+    cannot be reached because too few eligible bits carry a nonzero weight -- is
+    now reported before any work begins rather than part way through it.
+  - |
+    ``recover_configurations`` draws randomness from independent per-work-item
+    streams rather than sequentially from the supplied generator, in serial and
+    OpenMP builds alike.  A counter-based engine -- one whose ``set_counter``
+    accepts its counter type, such as the C++26 `std::philox_engine
+    <https://en.cppreference.com/w/cpp/numeric/random/philox_engine>`__ -- is
+    keyed by bitstring index, so its result is identical for any number of
+    threads *and* identical between a serial build and an OpenMP one.  Any other
+    engine must be seedable and is copied per thread; its results are valid,
+    agree with a serial build when OpenMP runs on one thread, and depend on the
+    thread count beyond that.  A generator that is neither counter-based nor
+    seedable is rejected at compile time under OpenMP but remains usable in a
+    serial build.
+
+    The counter-based tier is not specific to ``std::philox_engine``.  An engine
+    qualifies by naming a counter type -- either a static ``word_count`` from
+    which the standard ``std::array<result_type, word_count>`` shape is derived,
+    or a nested ``counter_type`` -- and accepting it in ``set_counter``.  See
+    :doc:`random-number-generation` for the reproducibility guarantees of each
+    tier.
 upgrade:
   - |
     The numerical output of ``recover_configurations`` for a given seeded
     generator has changed.  The returned unique bitstrings are now emitted in
-    first-seen (input) order rather than an unspecified order, and when built
-    with OpenMP the correction draws randomness via per-work-item streams.  The
-    returned distribution remains a valid refinement; only the specific
-    bitstrings selected and their ordering may differ from previous releases.
+    first-seen (input) order rather than in an unspecified order, and randomness
+    is now drawn from per-work-item streams, so the specific bitstrings selected
+    for a given seed differ.  The returned distribution remains a valid
+    refinement; only the selection and its ordering change.
+  - |
+    ``recover_configurations`` now rejects an unsatisfiable request before it
+    corrects any bitstring, where previously it raised only upon reaching the
+    offending bitstring.  The exception type and message are unchanged, but a
+    caller that caught it can no longer observe a partially advanced generator,
+    and a bitstring of the wrong length is now reported even when it follows
+    bitstrings that would have corrected successfully.
+  - |
+    ``recover_configurations`` leaves ``rng`` in a substantially different state
+    than before: it draws a base seed and then re-seeds the generator, so the
+    number of values consumed is unspecified.  Callers who continue to draw from
+    the same generator afterwards should not rely on its resulting state.
