@@ -1,0 +1,8 @@
+---
+features:
+  - |
+    An overload of ``recover_configurations`` has been added for systems of a
+    single species of particle (e.g., spinless fermions).  It takes a single
+    vector of average orbital occupancies and a single particle number, and
+    conserves only the total Hamming weight of each bitstring, rather than
+    the Hamming weights of the alpha and beta halves separately.
