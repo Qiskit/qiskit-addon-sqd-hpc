@@ -203,3 +203,79 @@ TEST_CASE("NoReplacementSampler never selects a zero-weight index")
         }
     }
 }
+
+// Every index the sampler returns must be a valid index into the weight array.
+// The Fenwick descent locates a leaf by comparing a uniform target against
+// cumulative node sums; if those sums are ever smaller than the target, every
+// step of the descent is taken and `pos` runs past the last leaf.
+//
+// That happens through floating-point cancellation.  A widely-spread weight
+// array rounds away the small weights when the node sums are accumulated
+// (1e-12 + 1e12 == 1e12), so once the dominant weight is drawn and subtracted,
+// the node sums and the running total collapse to exactly zero while a
+// genuinely nonzero weight remains.  The remaining-count guard still reports a
+// drawable index, the descent is entered with a zero total, and it walks off
+// the end.  Callers index straight into a parallel array with the result
+// (`indices[sampler(rng)]` in _bipartite_bitstring_correcting), so an
+// out-of-range return is an out-of-bounds read.
+TEST_CASE("NoReplacementSampler returns in-range indices for widely spread weights")
+{
+    const std::vector<std::vector<double>> weight_cases = {
+        {1e-12, 1e12}, {1e-20, 1.0}, {1e12, 1e-12}, {1e-8, 1e-8, 1e8}, {1.0, 1e16, 1.0},
+    };
+
+    for (const auto &weights : weight_cases) {
+        CAPTURE(weights.size());
+        // Draw the whole pool: the failure appears only after the dominant
+        // weight has been removed.
+        std::size_t drawable = 0;
+        for (const double w : weights) {
+            if (w > 0.0) {
+                ++drawable;
+            }
+        }
+
+        std::mt19937_64 rng(20250923);
+        NoReplacementSampler<std::vector<double>> sampler(weights);
+        for (std::size_t i = 0; i < drawable; ++i) {
+            const std::size_t idx = sampler(rng);
+            REQUIRE(idx < weights.size());
+            CHECK(weights[idx] > 0.0);
+        }
+    }
+}
+
+// Drawing the entire pool must yield each nonzero index exactly once, for any
+// weight distribution.  This is the same invariant as above stated over the
+// whole permutation rather than per draw, and it also catches a removed index
+// being handed out twice.
+TEST_CASE("NoReplacementSampler draws each nonzero index exactly once")
+{
+    const std::vector<std::vector<double>> weight_cases = {
+        {1.0, 2.0, 3.0},
+        {1e-12, 1e12},
+        {1e-8, 1e-8, 1e8},
+        {0.0, 1e-30, 1e30, 0.0},
+    };
+
+    for (const auto &weights : weight_cases) {
+        CAPTURE(weights.size());
+        std::vector<std::size_t> expected;
+        for (std::size_t i = 0; i < weights.size(); ++i) {
+            if (weights[i] > 0.0) {
+                expected.push_back(i);
+            }
+        }
+
+        std::mt19937_64 rng(0x0dd'ba11ULL);
+        NoReplacementSampler<std::vector<double>> sampler(weights);
+        std::vector<std::size_t> drawn;
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            const std::size_t idx = sampler(rng);
+            REQUIRE(idx < weights.size());
+            drawn.push_back(idx);
+        }
+        std::sort(drawn.begin(), drawn.end());
+        CHECK(drawn == expected);
+    }
+}
