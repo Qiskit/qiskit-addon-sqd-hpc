@@ -86,14 +86,27 @@ jobs:
         run: |
           ./build/sqd_benchmarks
 
-  # Build with OpenMP and run the tests at several thread counts, exercising the
-  # parallel path of recover_configurations.  Uses g++-16 / C++26 so the
-  # counter-based std::philox_engine path (and its thread-count-independence
-  # test) is actually compiled and run.
+  # Build with OpenMP against a development GCC and run the tests at several
+  # thread counts, exercising the parallel path of recover_configurations with a
+  # real counter-based engine.
+  #
+  # GCC 16 is currently the only standard library shipping std::philox_engine, so
+  # this is the only place the real counter-based engine -- and the
+  # serial-vs-OpenMP reproducibility diff below -- can run.  The OpenMP
+  # configurations that stable toolchains can cover (C++17/C++20, clang's libomp,
+  # and the no-exceptions build) live in the latest-versions workflow, where the
+  # counter-based path is covered by the mock engines in the test suite.
   openmp-tests:
-    name: OpenMP tests (C++26, g++-16)
+    name: OpenMP tests (C++${{ matrix.cxx_standard }}, ${{ matrix.compiler }}${{ matrix.no_exceptions && ', no exceptions' || '' }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: g++-16
+            cxx_standard: 26
+            philox: true
     steps:
       - uses: actions/checkout@v7
         with:
@@ -104,19 +117,22 @@ jobs:
           test -f /usr/share/doc/kitware-archive-keyring/copyright || wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
           echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ noble main' | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null
       - name: Enable toolchain ppa for newer GCC (g++-16)
+        if: matrix.compiler == 'g++-16'
         run: |
           sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-16 cmake ninja-build
+          sudo apt-get install -y cmake ninja-build
+          sudo apt-get install -y ${{ matrix.compiler }}
       - name: Configure CMake
         run: >-
           cmake -S . -B build -G Ninja
           -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
-          -DCMAKE_CXX_COMPILER=g++-16
-          -DCMAKE_CXX_STANDARD=26
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+          -DCMAKE_CXX_STANDARD=${{ matrix.cxx_standard }}
           -DSQD_ENABLE_OPENMP=ON
+          ${{ matrix.no_exceptions && '"-DCMAKE_CXX_FLAGS=-fno-exceptions -fno-rtti -DQKA_SQD_DISABLE_EXCEPTIONS=1 -DDOCTEST_CONFIG_NO_EXCEPTIONS_BUT_WITH_ALL_ASSERTS=1"' || '' }}
       - name: CMake Build
         run: cmake --build build -j4
       - name: Run tests at several thread counts
@@ -125,3 +141,82 @@ jobs:
             echo "== OMP_NUM_THREADS=$nthreads =="
             OMP_NUM_THREADS=$nthreads time ./build/sqd_tests
           done
+      # A counter-based RNG is keyed per work item identically in the serial and
+      # parallel code paths, so both builds must produce the same output.  This
+      # cannot be checked from inside the test suite: _OPENMP selects the path at
+      # compile time, so no single binary sees both, and a golden value would not
+      # be portable because std::discrete_distribution consumes an
+      # implementation-defined number of engine draws.  Comparing two builds of
+      # the same standard library avoids that.
+      - name: Configure and build a serial binary to compare against
+        if: matrix.philox
+        run: >-
+          cmake -S . -B build-serial -G Ninja
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+          -DCMAKE_CXX_STANDARD=${{ matrix.cxx_standard }}
+          && cmake --build build-serial -j4 --target sqd_rng_reproducibility_dump
+      - name: Serial and OpenMP builds agree for a counter-based RNG
+        if: matrix.philox
+        run: |
+          ./build-serial/sqd_rng_reproducibility_dump > serial.txt
+          for nthreads in 1 2 4 8; do
+            OMP_NUM_THREADS=$nthreads ./build/sqd_rng_reproducibility_dump > "omp-$nthreads.txt"
+          done
+
+          # A counter-based engine is keyed by work-item index, so it must match
+          # the serial build at every thread count.  Both philox widths are
+          # checked: only philox4x32 has words narrower than the type carrying
+          # them, so it alone exercises the narrow-word key fold.
+          #
+          # This check cannot catch a fold that narrows to the wrong width: both
+          # builds would share the error and so still agree with each other.
+          # Measured -- making `key_bits_of` ignore `word_size` leaves every diff
+          # below green.  The width itself is pinned by the `max_substreams`
+          # static_asserts in test/test_rng_substitutability.cpp, which fail to
+          # compile under that change.  What this check does catch is a keying
+          # scheme that is not thread-count independent.
+          status=0
+          for engine in philox4x64 philox4x32; do
+            grep "^$engine " serial.txt > "serial-$engine.txt"
+            for nthreads in 1 2 4 8; do
+              grep "^$engine " "omp-$nthreads.txt" > "omp-$engine-$nthreads.txt"
+              if diff -u "serial-$engine.txt" "omp-$engine-$nthreads.txt"; then
+                echo "OK: $engine matches the serial build at $nthreads thread(s)"
+              else
+                echo "FAIL: $engine differs from the serial build at $nthreads thread(s)"
+                status=1
+              fi
+            done
+          done
+
+          # An ordinary engine is seeded per thread rather than keyed per item, so
+          # it agrees with the serial build at one thread and must diverge beyond
+          # that.  Checking both halves also keeps the comparison from silently
+          # becoming vacuous: a dump that never reached the parallel path would
+          # match at every thread count, and one that ignored the serial
+          # preamble would match at none.
+          grep '^mt19937 ' serial.txt > serial-mt.txt
+          grep '^mt19937 ' omp-1.txt > omp-mt-1.txt
+          if diff -u serial-mt.txt omp-mt-1.txt; then
+            echo "OK: mt19937 matches the serial build at 1 thread"
+          else
+            echo "FAIL: mt19937 differs from the serial build at 1 thread"
+            status=1
+          fi
+          grep '^mt19937 ' omp-4.txt > omp-mt-4.txt
+          if cmp -s serial-mt.txt omp-mt-4.txt; then
+            echo "FAIL: mt19937 matched at 4 threads; the parallel path looks inactive"
+            status=1
+          else
+            echo "OK: mt19937 differs at 4 threads, as expected"
+          fi
+
+          # philox must actually have been compiled in, or the diffs above
+          # compared two empty files.
+          for engine in philox4x64 philox4x32; do
+            if [ ! -s "serial-$engine.txt" ]; then
+              echo "FAIL: no $engine output; std::philox_engine was not compiled in"
+              status=1
+            fi
+          done
+          exit $status

@@ -37,6 +37,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <random>
 #include <vector>
@@ -203,3 +204,58 @@ TEST_CASE("NoReplacementSampler never selects a zero-weight index")
         }
     }
 }
+
+// Gated on finite math: -ffinite-math-only makes `std::isinf` unusable, and the
+// precondition below depends on it.
+#if !QKA_SQD_FINITE_MATH_ONLY
+// Weights that are individually finite but whose *sum* overflows to infinity.
+// This records a limitation rather than asserting a behavior: this sampler cannot
+// draw from such a vector at all.  `std::discrete_distribution` normalizes by the
+// sum, so an infinite sum makes every probability exactly zero; libstdc++ then
+// returns the last index on every draw, and the retry loop in `operator()` cannot
+// escape, because its recovery is to rebuild the distribution from the surviving
+// weights, whose sum is still infinite.  Measured: the first draw returns, the
+// second hangs.
+//
+// No caller in the library can reach this.  `recover_configurations` is the only
+// one, and `_p_flip_*` returns values in [0, 1], so its sums are bounded by the
+// orbital count -- 2048 orbitals give a worst case of 2048, some 8.8e304 below
+// DBL_MAX.  The case is written down here so the limitation is documented rather
+// than rediscovered, and so an implementation that lifts it has an assertion
+// ready: the Fenwick-tree sampler in #61 completes every draw on this input.
+TEST_CASE("NoReplacementSampler cannot draw from weights whose sum overflows")
+{
+    constexpr double huge = std::numeric_limits<double>::max() / 4.0;
+    // Six copies of DBL_MAX/4 sum to 1.5*DBL_MAX, i.e. +inf, while every
+    // individual element is finite and so passes the per-element checks.
+    const std::vector<double> weights{1.0,  huge, huge, 0.0, huge,
+                                      0.01, huge, huge, huge};
+
+    double naive_sum = 0.0;
+    for (const double w : weights) {
+        naive_sum += w;
+    }
+    REQUIRE(std::isinf(naive_sum)); // the precondition this case is about
+
+    // Construction succeeds: every element is finite, so the per-element checks
+    // pass.  It is drawing that cannot make progress.
+    NoReplacementSampler<std::vector<double>> sampler(weights);
+    CHECK(sampler.get_remaining_nonzero_weights() == 8);
+
+    // Deliberately not drawing from `sampler`: the second draw would never
+    // return, so the hang is documented rather than triggered -- a test suite
+    // cannot assert non-termination without hanging itself.  An implementation
+    // that handles an infinite sum should add a loop here asserting that all 8
+    // draws complete.
+
+    // A large-but-finite sum of the same shape is fully supported, which is what
+    // distinguishes overflow from merely large weights.
+    const std::vector<double> ok{huge, huge, 1.0};
+    NoReplacementSampler<std::vector<double>> finite_sampler(ok);
+    CHECK(finite_sampler.get_remaining_nonzero_weights() == 3);
+    std::mt19937_64 rng(7);
+    for (int i = 0; i < 3; ++i) {
+        CHECK(finite_sampler(rng) < ok.size());
+    }
+}
+#endif // !QKA_SQD_FINITE_MATH_ONLY
