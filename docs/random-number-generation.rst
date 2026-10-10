@@ -20,12 +20,12 @@ The C++26 `std::philox_engine <https://en.cppreference.com/w/cpp/numeric/random/
 Other engines
 -------------
 
-Any other generator must be seedable, meaning it provides ``seed()``.  Each *thread* then receives its own independently seeded copy, and work items are distributed across those threads by OpenMP.  The results remain statistically valid, but which stream a given work item draws from depends on which thread runs it, so **the output depends on the number of threads**.
+In an OpenMP build, any other generator must be seedable, meaning it provides ``seed()``; a generator that is neither counter-based nor seedable is rejected at compile time, with a diagnostic naming both requirements.  Each *thread* then receives its own independently seeded copy, and work items are distributed across those threads by OpenMP.  The results remain statistically valid, but which stream a given work item draws from depends on which thread runs it, so **the output depends on the number of threads**.
 
-This is weaker than the counter-based tier because an ordinary engine cannot be positioned at a chosen point in its output without being advanced there one draw at a time, so a per-item stream would have to come from re-seeding rather than from addressing.  Seeding by index would then rest on distinct seeds producing well-separated streams -- a statistical expectation rather than the arithmetic guarantee above.  Per-thread seeding is used instead, which is why the thread count shows through.
+An ordinary engine cannot be positioned at a chosen point in its output without being advanced there one draw at a time, so it cannot be addressed by work-item index the way a counter-based engine is.  Seeding per thread is what gives each thread an independent stream without that addressing.
 
 Such an engine does agree between a serial build and an OpenMP build running on **one** thread: the serial path performs the same seeding an OpenMP build would perform for thread 0.  That makes the single-threaded case a usable reference point when comparing a parallel run against a serial one.
 
-A generator that is neither counter-based nor seedable is rejected at compile time when OpenMP is enabled, with a diagnostic naming both requirements.  Such a generator remains usable in a serial build, where only the ``uniform_random_bit_generator`` requirements apply.
+A serial build imposes neither requirement: only the ``uniform_random_bit_generator`` requirements apply there, so a generator that is neither counter-based nor seedable remains usable.
 
 See :doc:`compilation-flags` for how OpenMP is enabled.
