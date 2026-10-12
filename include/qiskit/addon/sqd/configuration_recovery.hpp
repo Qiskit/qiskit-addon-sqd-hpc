@@ -152,6 +152,12 @@ void _bipartite_bitstring_correcting(
                 }
             }
             internal::NoReplacementSampler sampler(weights);
+            // `recover_configurations` has already established, for every
+            // bitstring and sector, that at least `num_flip` eligible bits carry
+            // a nonzero weight, so every draw below succeeds.  That check cannot
+            // live here: this function runs inside an OpenMP structured block,
+            // where throwing is undefined and aborts under libgomp.
+            assert(num_flip <= sampler.get_remaining_nonzero_weights());
             for (std::size_t i = 0; i < num_flip; ++i) {
                 const auto idx = indices[sampler(rng)];
                 bitstring.flip(idx);
@@ -287,12 +293,11 @@ template <
         // `_p_flip_0_to_1` returns exactly 0.0 for an orbital whose average
         // occupancy is 0.0, which is any orbital empty in every sample.
         //
-        // Checking it here also keeps an all-zero weight vector away from
-        // std::discrete_distribution's constructor, which requires a positive
-        // sum.  libstdc++ asserts that sum in any build where __glibcxx_assert is
-        // live -- measured with GCC 16: an ordinary -O0 build aborts there, as
-        // does -O2 -D_GLIBCXX_ASSERTIONS -- and it does so in serial builds too,
-        // so this is not a hardening-flag corner case.
+        // The check is still required even though the sampler no longer builds a
+        // std::discrete_distribution (whose constructor asserted a positive sum):
+        // `NoReplacementSampler::operator()` raises when no nonzero weight
+        // remains, and that would happen inside the correction loop, which may be
+        // parallel.
         const auto n_right_bits =
             internal::mask_lower_n_bits(bitstring, partition_size).count();
         const std::array<std::uint64_t, 2> hamming_weight{
@@ -406,11 +411,12 @@ template <
     // still differ by construction, each drawing from its own seeded copy.
     //
     // No test covers this: the two paths are selected by `_OPENMP` at compile
-    // time, so no single binary can compare them, and a golden value cannot
-    // stand in because `std::discrete_distribution` consumes an
-    // implementation-defined number of draws, making the specific bitstrings
-    // unportable across standard libraries.  Two builds of the *same* standard
-    // library are diffed in CI instead; see the `openmp-tests` job.
+    // time, so no single binary can compare them.  Two builds of the *same*
+    // standard library are diffed in CI instead; see the `openmp-tests` job.
+    // (The sampler now consumes exactly one variate per draw, rather than
+    // std::discrete_distribution's implementation-defined number, so a golden
+    // value is no longer out of reach -- but it would still be pinned to
+    // uniform_real_distribution's unspecified algorithm, so the diff stands.)
     const std::uint64_t base_seed =
         static_cast<std::uint64_t>(rng()) ^ (static_cast<std::uint64_t>(rng()) << 32);
     if constexpr (
