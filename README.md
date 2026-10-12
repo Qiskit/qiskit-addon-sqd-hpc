@@ -81,6 +81,10 @@ To run the benchmark suite, navigate to the `build` directory, then run
 ./sqd_benchmarks
 ```
 
+## Citing this package
+
+If you use this package in your research, use the [CITATION.bib](CITATION.bib) file in this project's repository to cite the appropriate reference(s).
+
 ## Deprecation policy
 
 We follow [semantic versioning](https://semver.org/) and are guided by the principles in
