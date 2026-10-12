@@ -1,0 +1,21 @@
+---
+upgrade:
+  - |
+    The weighted sampling-without-replacement used by ``recover_configurations``
+    now draws from a `Fenwick tree
+    <https://en.wikipedia.org/wiki/Fenwick_tree>`__ rather than from a
+    ``std::discrete_distribution`` with rejection of already-drawn indices.  Each
+    draw is ``O(log n)`` with no rejection and no rebuilding, and consumes
+    exactly one variate from the supplied generator.  The sampling scheme is
+    unchanged -- it remains the sequential scheme, drawing index ``i`` with
+    probability proportional to its weight among those not yet drawn -- but the
+    specific bitstrings returned for a given seed differ from previous releases.
+fixes:
+  - |
+    Fixed sampling without replacement returning an out-of-range index when the
+    weight vector spanned a wide enough range of magnitudes that accumulating it
+    lost the smaller weights entirely (for instance ``{1e-12, 1e12}``).  The
+    index was used to subscript a parallel array, so the result was an
+    out-of-bounds read and the flip of an arbitrary bit.  Such a weight vector
+    can now also exhaust its whole pool, where previously drawing from it could
+    repeat an index or fail outright.
