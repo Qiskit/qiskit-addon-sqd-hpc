@@ -388,7 +388,7 @@ void key_counter_based_rng(RNGType &engine, std::uint64_t base_seed, std::size_t
 /// are spread evenly across the 64-bit range, so consecutive thread ids map to
 /// far-apart seeds rather than adjacent ones.
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-constexpr std::uint64_t
+inline constexpr std::uint64_t
 thread_seed(std::uint64_t base_seed, std::uint64_t thread_id) noexcept
 {
     return base_seed + 0x9e3779b97f4a7c15ULL * (thread_id + 1);
