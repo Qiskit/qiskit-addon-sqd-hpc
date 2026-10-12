@@ -23,6 +23,15 @@ else()
     add_compile_options(-Wall -Wextra)
 endif()
 
+# The library is header-only and uses OpenMP only when the consumer compiles
+# with it enabled (guarded by _OPENMP).  Enable this option to build the tests
+# and benchmarks with OpenMP, exercising the parallel path of
+# recover_configurations.
+option(SQD_ENABLE_OPENMP "Build tests and benchmarks with OpenMP" OFF)
+if(SQD_ENABLE_OPENMP)
+    find_package(OpenMP REQUIRED)
+endif()
+
 include_directories(include)
 
 add_subdirectory(deps/doctest)
@@ -65,9 +74,27 @@ target_link_libraries(sqd_tests
     boost_dynamic_bitset
     bitset2
 )
+if(SQD_ENABLE_OPENMP)
+    target_link_libraries(sqd_tests PRIVATE OpenMP::OpenMP_CXX)
+endif()
 
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(sqd_tests)
+
+# Dumps recover_configurations output for a fixed seed.  Built twice -- with and
+# without OpenMP -- and diffed, to check that a counter-based RNG gives the same
+# answer either way; see the comment at the top of the source file.
+add_executable(sqd_rng_reproducibility_dump
+    tools/rng_reproducibility_dump.cpp
+)
+target_link_libraries(sqd_rng_reproducibility_dump
+    PRIVATE
+    boost_dynamic_bitset
+    bitset2
+)
+if(SQD_ENABLE_OPENMP)
+    target_link_libraries(sqd_rng_reproducibility_dump PRIVATE OpenMP::OpenMP_CXX)
+endif()
 
 add_executable(sqd_benchmarks
     benchmark/benchmark_main.cpp
@@ -82,3 +109,6 @@ target_link_libraries(sqd_benchmarks
     boost_dynamic_bitset
     bitset2
 )
+if(SQD_ENABLE_OPENMP)
+    target_link_libraries(sqd_benchmarks PRIVATE OpenMP::OpenMP_CXX)
+endif()
