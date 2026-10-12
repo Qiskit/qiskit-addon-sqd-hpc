@@ -374,16 +374,12 @@ template <
         // branch keeps the copy and just re-seeds it once per thread here.
         RNGType thread_rng = rng;
         if constexpr (!internal::is_counter_based_rng_v<RNGType>) {
-            // Give each thread a well-separated seed.  The multiplier is the odd
-            // integer nearest 2^64 / golden-ratio, whose multiples are spread
-            // evenly across the 64-bit range, so consecutive thread ids map to
-            // far-apart seeds rather than adjacent ones.
+            // Give each thread a well-separated seed.  See `thread_seed`, which
+            // owns the expression so a test can assert on the same one.
             thread_rng.seed(
-                static_cast<typename RNGType::result_type>(
-                    base_seed +
-                    0x9e3779b97f4a7c15ULL *
-                        (static_cast<std::uint64_t>(omp_get_thread_num()) + 1)
-                )
+                static_cast<typename RNGType::result_type>(internal::thread_seed(
+                    base_seed, static_cast<std::uint64_t>(omp_get_thread_num())
+                ))
             );
         }
 #pragma omp for

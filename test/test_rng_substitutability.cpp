@@ -498,15 +498,18 @@ TEST_CASE_TEMPLATE_INVOKE(
 // This is the other half of the parallel path, and the same kind of gap as the
 // keying tests above address: giving every thread the *same* seed makes all
 // threads draw one identical stream, so items on different threads correlate
-// rather than being independent.  A whole-output comparison does not notice --
-// the output still changes with the thread count, because OpenMP hands each
-// thread a different slice of the loop, so a cross-build or cross-thread diff
-// stays green.  Measured: dropping the thread id from the seed expression in
-// `recover_configurations` leaves the CI serial-vs-OpenMP check passing.
+// rather than being independent.  Output comparisons do not notice.  Measured,
+// with the thread id collapsed to a constant in `internal::thread_seed`: the CI
+// serial-vs-OpenMP check still passes, and so does running the same input twice
+// from the same seed in opposite orders (81-91 of ~96 bitstrings differ between
+// the two orders either way), because the shared stream has still advanced a
+// different number of times by the time the loop reaches each item.
 //
-// So assert the property directly.  The expression mirrors the one in
-// `recover_configurations`; the multiplier is the odd integer nearest
-// 2^64 / golden-ratio, chosen so consecutive thread ids map to far-apart seeds.
+// So assert the property directly, and against the *same* expression the
+// parallel loop uses -- `internal::thread_seed`, which exists to be callable
+// from here.  An earlier version of this case inlined its own copy of the
+// formula, which made it a test of `std::mt19937` rather than of this library:
+// it passed whatever `recover_configurations` did.
 TEST_CASE("per-thread seeds give each thread a distinct stream")
 {
     constexpr std::uint64_t base_seed = 0x0123456789abcdefULL;
@@ -518,8 +521,9 @@ TEST_CASE("per-thread seeds give each thread a distinct stream")
         std::mt19937 rng;
         rng.seed(
             static_cast<std::mt19937::result_type>(
-                base_seed +
-                0x9e3779b97f4a7c15ULL * (static_cast<std::uint64_t>(tid) + 1)
+                Qiskit::addon::sqd::internal::thread_seed(
+                    base_seed, static_cast<std::uint64_t>(tid)
+                )
             )
         );
         constexpr int depth = 16;

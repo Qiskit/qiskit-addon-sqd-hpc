@@ -368,6 +368,32 @@ void key_counter_based_rng(RNGType &engine, std::uint64_t base_seed, std::size_t
     );
 }
 
+/// The seed for thread `thread_id`, derived from a base seed.
+///
+/// This is the weak tier's counterpart to `key_counter_based_rng`: an ordinary
+/// engine cannot be positioned by index, so each thread instead gets one
+/// independently seeded copy, seeded from this value.
+///
+/// `thread_id` must contribute, or every thread seeds identically and they all
+/// draw one shared stream -- work items on different threads then make the *same*
+/// draw where they should make independent ones, which biases the result while
+/// leaving whole-output comparisons looking healthy.  Factored out so a test can
+/// call the same expression the parallel loop uses; an output comparison cannot
+/// catch its loss (measured: collapsing `thread_id` to a constant leaves both the
+/// CI serial-vs-OpenMP check and a same-seed input-reordering comparison green,
+/// because the shared stream has still advanced a different number of times by
+/// the time the loop reaches each item).
+///
+/// The multiplier is the odd integer nearest 2^64 / golden-ratio, whose multiples
+/// are spread evenly across the 64-bit range, so consecutive thread ids map to
+/// far-apart seeds rather than adjacent ones.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+constexpr std::uint64_t
+thread_seed(std::uint64_t base_seed, std::uint64_t thread_id) noexcept
+{
+    return base_seed + 0x9e3779b97f4a7c15ULL * (thread_id + 1);
+}
+
 /// How many distinct substreams `RNGType` can address, or 0 for "more than any
 /// `std::size_t` can count".
 ///
