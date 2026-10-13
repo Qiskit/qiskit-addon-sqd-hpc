@@ -399,13 +399,13 @@ template <
 
         // Can each spin sector reach its target Hamming weight?  Correction flips
         // `num_flip` bits chosen without replacement among the eligible bits --
-        // those currently equal to `flip` -- weighted by `probs_table`.  A bit
+        // those currently equal to `flip` -- weighted by `flip_probs`.  A bit
         // whose weight is zero can never be chosen, so the requirement is that at
         // least `num_flip` eligible bits carry a nonzero weight.
         //
         // This mirrors `_bipartite_bitstring_correcting` exactly, so it is a
         // prediction rather than an approximation: the quantities involved are
-        // fixed by (bitstring, probs_table, num_elec) and no sampling is
+        // fixed by (bitstring, flip_probs, num_elec) and no sampling is
         // involved.  Zero weights are ordinary in practice, not pathological --
         // `_p_flip_0_to_1` returns exactly 0.0 for an orbital whose average
         // occupancy is 0.0, which is any orbital empty in every sample.
@@ -429,7 +429,7 @@ template <
                                                     : num_elec[s] - hamming_weight[s];
                 std::uint64_t num_eligible = 0;
                 for (std::size_t j = 0; j < partition_size; ++j) {
-                    if (bitstring[j + offset] == flip && probs_table[s][flip][j] > 0) {
+                    if (bitstring[j + offset] == flip && flip_probs(s, flip, j) > 0) {
                         ++num_eligible;
                     }
                 }
