@@ -1,0 +1,12 @@
+---
+features:
+  - |
+    The weights used by :cpp:func:`recover_configurations` to choose which bits
+    to flip can now be specified directly.  A new overload of
+    ``recover_configurations`` accepts a
+    :cpp:class:`Qiskit::addon::sqd::FlipProbabilityTable` in place of the
+    average orbital occupancies.  The table used by default can be computed
+    with :cpp:func:`Qiskit::addon::sqd::flip_probabilities_from_occupancies`,
+    which allows it to be inspected or adjusted before use.  The existing
+    overload is unchanged and gives identical results.
+    See `#22 <https://github.com/Qiskit/qiskit-addon-sqd-hpc/issues/22>`__.

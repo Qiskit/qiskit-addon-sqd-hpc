@@ -22,6 +22,8 @@
 
 #include "bitset_compat.hpp"
 
+using Qiskit::addon::sqd::flip_probabilities_from_occupancies;
+using Qiskit::addon::sqd::FlipProbabilityTable;
 using Qiskit::addon::sqd::recover_configurations;
 
 #if !QKA_SQD_DISABLE_EXCEPTIONS && !(_MSVC_LANG == 202002L)
@@ -214,6 +216,170 @@ TEST_CASE("Configuration recovery tests from python addon")
         CHECK_THROWS_AS(
             std::ignore =
                 recover_configurations(bitstrings, probs, occs, {ham_r, ham_l}, rng),
+            std::invalid_argument
+        );
+    }
+}
+
+TEST_CASE("Flip probability table")
+{
+    SUBCASE("Zero-initialized")
+    {
+        const FlipProbabilityTable table(3);
+        CHECK(table.num_orbitals() == 3);
+        for (std::size_t s = 0; s < 2; ++s) {
+            for (std::size_t i = 0; i < 3; ++i) {
+                CHECK(table(s, false, i) == 0.0);
+                CHECK(table(s, true, i) == 0.0);
+            }
+        }
+    }
+    SUBCASE("Elements are independent")
+    {
+        FlipProbabilityTable table(2);
+        double value = 1.0;
+        for (std::size_t s = 0; s < 2; ++s) {
+            for (const bool bit : {false, true}) {
+                for (std::size_t i = 0; i < 2; ++i) {
+                    table(s, bit, i) = value++;
+                }
+            }
+        }
+        value = 1.0;
+        for (std::size_t s = 0; s < 2; ++s) {
+            for (const bool bit : {false, true}) {
+                for (std::size_t i = 0; i < 2; ++i) {
+                    CHECK(table(s, bit, i) == value++);
+                }
+            }
+        }
+    }
+    SUBCASE("Default table from occupancies")
+    {
+        // density 0.5; an orbital at occupancy 1 strongly favors 0->1 and
+        // disfavors 1->0, and vice versa at occupancy 0.
+        const std::array<std::vector<double>, 2> occs{
+            std::vector<double>{1.0, 0.0}, std::vector<double>{0.5, 0.5}
+        };
+        const auto table = flip_probabilities_from_occupancies(occs, {1, 1});
+        REQUIRE(table.num_orbitals() == 2);
+        CHECK(table(0, false, 0) == doctest::Approx(1.0));
+        CHECK(table(0, true, 0) == doctest::Approx(0.0));
+        CHECK(table(0, false, 1) == doctest::Approx(0.0));
+        CHECK(table(0, true, 1) == doctest::Approx(1.0));
+        CHECK(table(1, false, 0) == doctest::Approx(0.01));
+        CHECK(table(1, true, 0) == doctest::Approx(0.01));
+    }
+    SUBCASE("Default table validates its inputs")
+    {
+        const std::array<std::vector<double>, 2> mismatched{
+            std::vector<double>(2), std::vector<double>(3)
+        };
+        CHECK_THROWS_AS(
+            std::ignore = flip_probabilities_from_occupancies(mismatched, {1, 1}),
+            std::invalid_argument
+        );
+        const std::array<std::vector<double>, 2> occs{
+            std::vector<double>(2), std::vector<double>(2)
+        };
+        CHECK_THROWS_AS(
+            std::ignore = flip_probabilities_from_occupancies(occs, {3, 1}),
+            std::invalid_argument
+        );
+    }
+}
+
+TEST_CASE("Configuration recovery with a flip probability table")
+{
+    constexpr auto num_orbs = 4;
+    constexpr auto half_orbs = num_orbs / 2;
+    SUBCASE("Matches the occupancy overload")
+    {
+        std::vector<std::bitset<num_orbs>> bitstrings;
+        bitstrings.reserve(16);
+        for (unsigned long i = 0; i < 16; ++i) {
+            bitstrings.emplace_back(i);
+        }
+        const std::vector<double> probs(bitstrings.size(), 1.0);
+        const std::array<std::vector<double>, 2> occs{
+            std::vector<double>{0.3, 0.8}, std::vector<double>{0.6, 0.1}
+        };
+        std::mt19937_64 rng_a(42), rng_b(42);
+        const auto expected =
+            recover_configurations(bitstrings, probs, occs, {1, 1}, rng_a);
+        const auto actual = recover_configurations(
+            bitstrings, probs, flip_probabilities_from_occupancies(occs, {1, 1}),
+            {1, 1}, rng_b
+        );
+        CHECK(actual.first == expected.first);
+        CHECK(actual.second == expected.second);
+    }
+    SUBCASE("Custom table steers which bits flip")
+    {
+        // Only orbital 1 of each spin species may be flipped from 0 to 1, and
+        // only orbital 0 from 1 to 0.
+        FlipProbabilityTable table(half_orbs);
+        for (std::size_t s = 0; s < 2; ++s) {
+            table(s, false, 1) = 1.0;
+            table(s, true, 0) = 1.0;
+        }
+        // Spin-up has too few electrons (0b00), spin-down too many (0b11).
+        const std::vector<std::bitset<num_orbs>> bitstrings{0b1100};
+        const std::vector<double> probs{1.0};
+        std::mt19937_64 rng;
+        for (int trial = 0; trial < 20; ++trial) {
+            auto [mat_rec, probs_rec] =
+                recover_configurations(bitstrings, probs, table, {1, 1}, rng);
+            REQUIRE(mat_rec.size() == 1);
+            CHECK(mat_rec[0] == 0b1010);
+        }
+    }
+    SUBCASE("Invalid tables are rejected")
+    {
+        const std::vector<std::bitset<num_orbs>> bitstrings{0b0000};
+        const std::vector<double> probs{1.0};
+        std::mt19937_64 rng;
+        FlipProbabilityTable table(half_orbs);
+        table(0, false, 0) = 1.0;
+        table(0, false, 1) = 1.0;
+        SUBCASE("Negative weight")
+        {
+            table(1, true, 1) = -0.5;
+        }
+#if !QKA_SQD_FINITE_MATH_ONLY
+        SUBCASE("NaN weight")
+        {
+            table(1, true, 1) = std::nan("");
+        }
+        SUBCASE("Infinite weight")
+        {
+            table(1, false, 0) = INFINITY;
+        }
+#endif
+        CHECK_THROWS_AS(
+            std::ignore = recover_configurations(bitstrings, probs, table, {1, 0}, rng),
+            std::invalid_argument
+        );
+    }
+    SUBCASE("Table size must match the bitstrings")
+    {
+        const std::vector<std::bitset<num_orbs>> bitstrings{0b0000};
+        const std::vector<double> probs{1.0};
+        std::mt19937_64 rng;
+        const FlipProbabilityTable table(3);
+        CHECK_THROWS_AS(
+            std::ignore = recover_configurations(bitstrings, probs, table, {1, 1}, rng),
+            std::invalid_argument
+        );
+    }
+    SUBCASE("Hamming weight cannot exceed the table size")
+    {
+        const std::vector<std::bitset<num_orbs>> bitstrings{0b0000};
+        const std::vector<double> probs{1.0};
+        std::mt19937_64 rng;
+        const FlipProbabilityTable table(half_orbs);
+        CHECK_THROWS_AS(
+            std::ignore = recover_configurations(bitstrings, probs, table, {3, 0}, rng),
             std::invalid_argument
         );
     }

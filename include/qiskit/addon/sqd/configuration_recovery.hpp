@@ -28,6 +28,7 @@
 #include "qiskit/addon/sqd/internal/concepts.hpp"
 #include "qiskit/addon/sqd/internal/dense_map.hpp"
 #include "qiskit/addon/sqd/internal/exception-macros.hpp"
+#include "qiskit/addon/sqd/internal/finite-math.hpp"
 #include "qiskit/addon/sqd/internal/parallel-rng.hpp"
 #include "qiskit/addon/sqd/internal/sample-without-replacement.hpp"
 
@@ -43,6 +44,70 @@ namespace addon
 
 namespace sqd
 {
+
+/// Relative weights for flipping each bit during configuration recovery.
+///
+/// When `recover_configurations()` must change the number of electrons in one
+/// spin species of a bitstring, it chooses which bits to flip by sampling,
+/// without replacement, among the bits that hold the value to be flipped (the
+/// 1s if there are too many electrons, the 0s if there are too few).  Each
+/// eligible bit is chosen in proportion to its weight in this table.
+///
+/// Weights are relative: only their ratios among the eligible bits of a
+/// single spin species matter, so they need not be normalized.  They must be
+/// finite and non-negative.
+///
+/// A default table, derived from average orbital occupancies, is produced by
+/// `flip_probabilities_from_occupancies()`; it may be modified before being
+/// passed to `recover_configurations()`.  Alternatively, construct a table
+/// directly and fill in every weight.
+class FlipProbabilityTable
+{
+  public:
+    /// Construct a table for `num_orbitals` spatial orbitals per spin species,
+    /// with every weight initialized to zero.
+    explicit FlipProbabilityTable(std::size_t num_orbitals)
+      : num_orbitals_(num_orbitals), weights_(4 * num_orbitals, 0.0)
+    {
+    }
+
+    /// Number of spatial orbitals per spin species.
+    [[nodiscard]] std::size_t num_orbitals() const noexcept
+    {
+        return num_orbitals_;
+    }
+
+    /// Access the weight for flipping a bit.
+    ///
+    /// @param[in] spin Spin species: 0 for spin-up (the low, or right, half of
+    ///     each bitstring) and 1 for spin-down (the high, or left, half).
+    /// @param[in] bit The bit's current value: `false` for the weight of
+    ///     flipping a 0 to a 1, `true` for flipping a 1 to a 0.
+    /// @param[in] orbital Orbital index within the spin species, less than
+    ///     `num_orbitals()`.
+    double &operator()(std::size_t spin, bool bit, std::size_t orbital)
+    {
+        return weights_[index(spin, bit, orbital)];
+    }
+
+    /// @copydoc operator()(std::size_t, bool, std::size_t)
+    double operator()(std::size_t spin, bool bit, std::size_t orbital) const
+    {
+        return weights_[index(spin, bit, orbital)];
+    }
+
+  private:
+    [[nodiscard]] std::size_t
+    index(std::size_t spin, bool bit, std::size_t orbital) const noexcept
+    {
+        assert(spin < 2);
+        assert(orbital < num_orbitals_);
+        return ((2 * spin) + static_cast<std::size_t>(bit)) * num_orbitals_ + orbital;
+    }
+
+    std::size_t num_orbitals_;
+    std::vector<double> weights_;
+};
 
 namespace internal
 {
@@ -105,15 +170,14 @@ mask_lower_n_bits(const BitstringType &bitstring, unsigned int n)
 
 template <typename BitstringType, QKA_SQD_CONCEPT_RNG_(RNGType)>
 void _bipartite_bitstring_correcting(
-    BitstringType &bitstring,
-    const std::array<std::array<std::vector<double>, 2>, 2> &probs_table,
+    BitstringType &bitstring, const FlipProbabilityTable &flip_probs,
     std::array<std::uint64_t, 2> num_elec,
     std::pair<std::vector<std::size_t>, std::vector<double>> &scratch_vectors,
     RNGType &rng
 )
 {
-    // Use occupancy information (via probs_table) and target Hamming weight to
-    // correct a bitstring.
+    // Use the flip weights (flip_probs) and target Hamming weight to correct a
+    // bitstring.
 
 #if QKA_SQD_DEBUG_RECOVERY
     std::cerr << "Initial bitstring: " << bitstring << std::endl;
@@ -123,7 +187,7 @@ void _bipartite_bitstring_correcting(
 
     // The number of bits should be even - this was already checked in the calling
     // function
-    const auto partition_size = probs_table[0][0].size();
+    const auto partition_size = flip_probs.num_orbitals();
 
     // Determine starting Hamming weights
     std::array<std::uint64_t, 2> initial_hamming_weight;
@@ -148,7 +212,7 @@ void _bipartite_bitstring_correcting(
             for (std::uint64_t j = 0; j < partition_size; ++j) {
                 if (bitstring[j + offset] == flip) {
                     indices.push_back(j + offset);
-                    weights.push_back(probs_table[s][flip][j]);
+                    weights.push_back(flip_probs(s, flip, j));
                 }
             }
             internal::NoReplacementSampler sampler(weights);
@@ -173,16 +237,90 @@ void _bipartite_bitstring_correcting(
     assert(bitstring.count() == num_elec[0] + num_elec[1]);
 }
 
+inline void _validate_flip_probabilities(const FlipProbabilityTable &flip_probs)
+{
+    for (std::size_t s = 0; s < 2; ++s) {
+        for (int bit = 0; bit < 2; ++bit) {
+            for (std::size_t i = 0; i < flip_probs.num_orbitals(); ++i) {
+                const double weight = flip_probs(s, bit != 0, i);
+#if !QKA_SQD_FINITE_MATH_ONLY
+                if (!std::isfinite(weight)) {
+                    QKA_SQD_THROW_INVALID_ARGUMENT_(
+                        "Flip probabilities must be finite."
+                    );
+                }
+#endif // !QKA_SQD_FINITE_MATH_ONLY
+                if (weight < 0) {
+                    QKA_SQD_THROW_INVALID_ARGUMENT_(
+                        "Flip probabilities must be non-negative."
+                    );
+                }
+            }
+        }
+    }
+}
+
 } // namespace internal
 
-/// Refine bitstrings based on average orbital occupancy and a target
+/// Compute the default flip-probability table from average orbital
+/// occupancies.
+///
+/// This is the table that `recover_configurations()` uses when given average
+/// occupancies.  It can be modified and then passed to the overload of
+/// `recover_configurations()` that accepts a `FlipProbabilityTable`.
+///
+/// Each orbital's occupancy is clamped to [0, 1] and compared with the naive
+/// expectation `num_elec[s] / num_orbitals`.  A 0 in an orbital whose
+/// occupancy exceeds the expectation is likely to be flipped to a 1 (and
+/// likewise for a 1 in an under-occupied orbital), with a weight that grows
+/// linearly with the deviation; otherwise the weight is small (below 0.01).
+///
+/// @param[in] avg_occupancies Size-2 `std::array` of `std::vector<double>`s holding the
+///     mean occupancy of the spin-up and spin-down orbitals, respectively.  Both
+///     vectors must have the same size.
+/// @param[in] num_elec Size-2 `std::array` containing the number of spin-up and
+///     spin-down electrons in the system, respectively.
+///
+/// @return The flip-probability table.
+[[nodiscard]] inline FlipProbabilityTable flip_probabilities_from_occupancies(
+    const std::array<std::vector<double>, 2> &avg_occupancies,
+    std::array<std::uint64_t, 2> num_elec
+)
+{
+    const auto partition_size = avg_occupancies[0].size();
+    if (avg_occupancies[1].size() != partition_size) {
+        QKA_SQD_THROW_INVALID_ARGUMENT_(
+            "Average occupancies vectors must have matching number of alpha and beta "
+            "orbitals."
+        );
+    }
+    if (num_elec[0] > partition_size || num_elec[1] > partition_size) {
+        QKA_SQD_THROW_INVALID_ARGUMENT_(
+            "Desired Hamming weight cannot be larger than the number of orbitals."
+        );
+    }
+
+    FlipProbabilityTable flip_probs(partition_size);
+    for (std::size_t s = 0; s < 2; ++s) {
+        // NOLINTBEGIN(bugprone-narrowing-conversions)
+        double density_s = static_cast<double>(num_elec[s]) / partition_size;
+        // NOLINTEND(bugprone-narrowing-conversions)
+        for (std::size_t i = 0; i < partition_size; ++i) {
+            const auto occ = std::max(0.0, std::min(1.0, avg_occupancies[s][i]));
+            flip_probs(s, false, i) = internal::_p_flip_0_to_1(density_s, occ);
+            flip_probs(s, true, i) = internal::_p_flip_1_to_0(density_s, occ);
+        }
+    }
+    return flip_probs;
+}
+
+/// Refine bitstrings based on a table of flip probabilities and a target
 /// Hamming weight.
 ///
-/// When compiled with OpenMP enabled, the per-bitstring correction runs in
-/// parallel.  In that case `rng` is used to seed independent per-work-item
-/// random streams rather than being drawn from sequentially, so the numerical
-/// output differs from a purely sequential run.  The degree of reproducibility
-/// depends on the generator:
+/// Each bitstring whose spin-up or spin-down Hamming weight differs from the
+/// target is corrected by flipping bits, chosen according to `flip_probs` (see
+/// `FlipProbabilityTable`).  Corrected bitstrings that coincide are merged, and
+/// their probabilities summed.
 ///
 ///   - A counter-based engine (one whose `set_counter` accepts its counter
 ///     type, such as the C++26 `std::philox_engine`) is keyed by bitstring
@@ -204,9 +342,8 @@ void _bipartite_bitstring_correcting(
 /// @param[in] bitstrings A container (e.g., `std::vector`) of bitstrings.
 /// @param[in] probabilities A 1D array specifying a probability distribution over
 ///     the bitstrings.  Must contain the same number of elements as `bitstrings`.
-/// @param[in] avg_occupancies Size-2 `std::array` of `std::vector<double>`s holding the
-///     mean occupancy of the spin-up and spin-down orbitals, respectively.  Each
-///     vector's size must be half the size of a single bitstring.
+/// @param[in] flip_probs Relative weights for flipping each bit.  Each bitstring's
+///     size must be twice `flip_probs.num_orbitals()`.
 /// @param[in] num_elec Size-2 `std::array` containing the number of spin-up and
 ///     spin-down electrons in the system, respectively.
 /// @param[in,out] rng Random number generator.
@@ -224,8 +361,8 @@ template <
 >
 [[nodiscard]] std::pair<BitstringVectorType, WeightVectorType> recover_configurations(
     const BitstringVectorType &bitstrings, const WeightVectorType &probabilities,
-    const std::array<std::vector<double>, 2> &avg_occupancies,
-    std::array<std::uint64_t, 2> num_elec, RNGType &rng
+    const FlipProbabilityTable &flip_probs, std::array<std::uint64_t, 2> num_elec,
+    RNGType &rng
 )
 {
     if (bitstrings.size() != probabilities.size()) {
@@ -234,33 +371,13 @@ template <
         );
     }
 
-    const auto partition_size = avg_occupancies[0].size();
-    if (avg_occupancies[1].size() != partition_size) {
-        QKA_SQD_THROW_INVALID_ARGUMENT_(
-            "Average occupancies vectors must have matching number of alpha and beta "
-            "orbitals."
-        );
-    }
+    const auto partition_size = flip_probs.num_orbitals();
     if (num_elec[0] > partition_size || num_elec[1] > partition_size) {
         QKA_SQD_THROW_INVALID_ARGUMENT_(
             "Desired Hamming weight cannot be larger than the number of orbitals."
         );
     }
-
-    // Populate the probabilities table
-    std::array<std::array<std::vector<double>, 2>, 2> probs_table;
-    for (int s = 0; s < 2; ++s) {
-        probs_table[s][0].resize(partition_size);
-        probs_table[s][1].resize(partition_size);
-        // NOLINTBEGIN(bugprone-narrowing-conversions)
-        double density_s = static_cast<double>(num_elec[s]) / partition_size;
-        // NOLINTEND(bugprone-narrowing-conversions)
-        for (std::size_t i = 0; i < partition_size; ++i) {
-            const auto occ = std::max(0.0, std::min(1.0, avg_occupancies[s][i]));
-            probs_table[s][0][i] = internal::_p_flip_0_to_1(density_s, occ);
-            probs_table[s][1][i] = internal::_p_flip_1_to_0(density_s, occ);
-        }
-    }
+    internal::_validate_flip_probabilities(flip_probs);
 
     using BitstringType = typename BitstringVectorType::value_type;
 
@@ -282,13 +399,13 @@ template <
 
         // Can each spin sector reach its target Hamming weight?  Correction flips
         // `num_flip` bits chosen without replacement among the eligible bits --
-        // those currently equal to `flip` -- weighted by `probs_table`.  A bit
+        // those currently equal to `flip` -- weighted by `flip_probs`.  A bit
         // whose weight is zero can never be chosen, so the requirement is that at
         // least `num_flip` eligible bits carry a nonzero weight.
         //
         // This mirrors `_bipartite_bitstring_correcting` exactly, so it is a
         // prediction rather than an approximation: the quantities involved are
-        // fixed by (bitstring, probs_table, num_elec) and no sampling is
+        // fixed by (bitstring, flip_probs, num_elec) and no sampling is
         // involved.  Zero weights are ordinary in practice, not pathological --
         // `_p_flip_0_to_1` returns exactly 0.0 for an orbital whose average
         // occupancy is 0.0, which is any orbital empty in every sample.
@@ -312,7 +429,7 @@ template <
                                                     : num_elec[s] - hamming_weight[s];
                 std::uint64_t num_eligible = 0;
                 for (std::size_t j = 0; j < partition_size; ++j) {
-                    if (bitstring[j + offset] == flip && probs_table[s][flip][j] > 0) {
+                    if (bitstring[j + offset] == flip && flip_probs(s, flip, j) > 0) {
                         ++num_eligible;
                     }
                 }
@@ -394,7 +511,7 @@ template <
             }
             BitstringType corrected_bitstring = bitstrings[i];
             internal::_bipartite_bitstring_correcting(
-                corrected_bitstring, probs_table, num_elec, scratch, thread_rng
+                corrected_bitstring, flip_probs, num_elec, scratch, thread_rng
             );
             corrected[i] = std::move(corrected_bitstring);
         }
@@ -445,7 +562,7 @@ template <
         }
         BitstringType corrected_bitstring = bitstrings[i];
         internal::_bipartite_bitstring_correcting(
-            corrected_bitstring, probs_table, num_elec, scratch, rng
+            corrected_bitstring, flip_probs, num_elec, scratch, rng
         );
         corrected[i] = std::move(corrected_bitstring);
     }
@@ -481,6 +598,61 @@ template <
     internal::_normalize(freqs_out);
 
     return {bitstrings_out, freqs_out};
+}
+
+/// Refine bitstrings based on average orbital occupancy and a target
+/// Hamming weight.
+///
+/// Equivalent to calling the overload that accepts a `FlipProbabilityTable`
+/// with `flip_probabilities_from_occupancies(avg_occupancies, num_elec)`.
+///
+/// When compiled with OpenMP enabled, the per-bitstring correction runs in
+/// parallel.  In that case `rng` is used to seed independent per-work-item
+/// random streams rather than being drawn from sequentially, so the numerical
+/// output differs from a purely sequential run.  The degree of reproducibility
+/// depends on the generator:
+///
+///   - A counter-based engine (one with `set_counter`, such as the C++26
+///     `std::philox_engine`) is keyed by bitstring index, so the result --
+///     including the order of the returned vectors -- is identical for any
+///     number of threads.
+///   - Any other engine must be seedable (have `seed()`); each thread then uses
+///     an independently seeded copy.  Results are valid but depend on the
+///     thread count.  A generator that is neither counter-based nor seedable is
+///     rejected at compile time under OpenMP (it remains usable in a serial
+///     build).
+///
+/// @param[in] bitstrings A container (e.g., `std::vector`) of bitstrings.
+/// @param[in] probabilities A 1D array specifying a probability distribution over
+///     the bitstrings.  Must contain the same number of elements as `bitstrings`.
+/// @param[in] avg_occupancies Size-2 `std::array` of `std::vector<double>`s holding the
+///     mean occupancy of the spin-up and spin-down orbitals, respectively.  Each
+///     vector's size must be half the size of a single bitstring.
+/// @param[in] num_elec Size-2 `std::array` containing the number of spin-up and
+///     spin-down electrons in the system, respectively.
+/// @param[in,out] rng Random number generator.
+///
+/// @tparam BitstringVectorType Type of `bitstrings`, compatible with
+///     `std::vector<boost::dynamic_bitset<>>`.
+/// @tparam WeightVectorType Type of `weights`, compatible with `std::vector<double>`.
+/// @tparam RNGType Type of random number generator.
+///
+/// @return A refined `std::vector` of unique bitstrings and a parallel, updated
+///     probability array.
+template <
+    typename BitstringVectorType, typename WeightVectorType,
+    QKA_SQD_CONCEPT_RNG_(RNGType)
+>
+[[nodiscard]] std::pair<BitstringVectorType, WeightVectorType> recover_configurations(
+    const BitstringVectorType &bitstrings, const WeightVectorType &probabilities,
+    const std::array<std::vector<double>, 2> &avg_occupancies,
+    std::array<std::uint64_t, 2> num_elec, RNGType &rng
+)
+{
+    return recover_configurations(
+        bitstrings, probabilities,
+        flip_probabilities_from_occupancies(avg_occupancies, num_elec), num_elec, rng
+    );
 }
 
 } // namespace sqd
