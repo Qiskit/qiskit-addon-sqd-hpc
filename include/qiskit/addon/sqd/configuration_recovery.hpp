@@ -103,37 +103,46 @@ mask_lower_n_bits(const BitstringType &bitstring, unsigned int n)
     return retval;
 }
 
-template <typename BitstringType, QKA_SQD_CONCEPT_RNG_(RNGType)>
-void _bipartite_bitstring_correcting(
+template <std::size_t NumSpecies, typename BitstringType, QKA_SQD_CONCEPT_RNG_(RNGType)>
+void _bitstring_correcting(
     BitstringType &bitstring,
-    const std::array<std::array<std::vector<double>, 2>, 2> &probs_table,
-    std::array<std::uint64_t, 2> num_elec,
+    const std::array<std::array<std::vector<double>, 2>, NumSpecies> &probs_table,
+    const std::array<std::uint64_t, NumSpecies> &num_elec,
     std::pair<std::vector<std::size_t>, std::vector<double>> &scratch_vectors,
     RNGType &rng
 )
 {
     // Use occupancy information (via probs_table) and target Hamming weight to
-    // correct a bitstring.
+    // correct a bitstring.  The bitstring is divided into NumSpecies equal
+    // partitions, each with its own target Hamming weight.
+    static_assert(NumSpecies == 1 || NumSpecies == 2);
 
 #if QKA_SQD_DEBUG_RECOVERY
     std::cerr << "Initial bitstring: " << bitstring << std::endl;
-    std::cerr << "Desired Hamming weight: " << num_elec[0] << ' ' << num_elec[1]
-              << std::endl;
+    std::cerr << "Desired Hamming weight:";
+    for (const auto n : num_elec) {
+        std::cerr << ' ' << n;
+    }
+    std::cerr << std::endl;
 #endif
 
-    // The number of bits should be even - this was already checked in the calling
-    // function
+    // The number of bits is a multiple of NumSpecies - this was already
+    // checked in the calling function
     const auto partition_size = probs_table[0][0].size();
 
     // Determine starting Hamming weights
-    std::array<std::uint64_t, 2> initial_hamming_weight;
-    const auto n_right = mask_lower_n_bits(bitstring, partition_size).count();
-    initial_hamming_weight[0] = n_right;
-    initial_hamming_weight[1] = bitstring.count() - n_right;
+    std::array<std::uint64_t, NumSpecies> initial_hamming_weight;
+    if constexpr (NumSpecies == 1) {
+        initial_hamming_weight[0] = bitstring.count();
+    } else {
+        const auto n_right = mask_lower_n_bits(bitstring, partition_size).count();
+        initial_hamming_weight[0] = n_right;
+        initial_hamming_weight[1] = bitstring.count() - n_right;
+    }
 
-    // Handle RIGHT (alpha) then LEFT (beta) bits
+    // Handle each partition, starting with the RIGHT (alpha) bits
     std::uint64_t offset = 0;
-    for (int s = 0; s < 2; ++s) {
+    for (std::size_t s = 0; s < NumSpecies; ++s) {
         if (initial_hamming_weight[s] != num_elec[s]) {
             const bool flip = bool(
                 initial_hamming_weight[s] > num_elec[s]
@@ -169,63 +178,23 @@ void _bipartite_bitstring_correcting(
 #if QKA_SQD_DEBUG_RECOVERY
     std::cerr << "Final bitstring: " << bitstring << '\n' << std::endl;
 #endif
-    assert(mask_lower_n_bits(bitstring, partition_size).count() == num_elec[0]);
-    assert(bitstring.count() == num_elec[0] + num_elec[1]);
+    if constexpr (NumSpecies == 2) {
+        assert(mask_lower_n_bits(bitstring, partition_size).count() == num_elec[0]);
+    }
+    assert(
+        bitstring.count() ==
+        std::accumulate(num_elec.begin(), num_elec.end(), std::uint64_t{0})
+    );
 }
 
-} // namespace internal
-
-/// Refine bitstrings based on average orbital occupancy and a target
-/// Hamming weight.
-///
-/// When compiled with OpenMP enabled, the per-bitstring correction runs in
-/// parallel.  In that case `rng` is used to seed independent per-work-item
-/// random streams rather than being drawn from sequentially, so the numerical
-/// output differs from a purely sequential run.  The degree of reproducibility
-/// depends on the generator:
-///
-///   - A counter-based engine (one whose `set_counter` accepts its counter
-///     type, such as the C++26 `std::philox_engine`) is keyed by bitstring
-///     index, so the result -- including the order of the returned vectors --
-///     is identical for any number of threads.
-///   - Any other engine must be seedable (have `seed()`); each thread then uses
-///     an independently seeded copy.  Results are valid but depend on the
-///     thread count.  A generator that is neither counter-based nor seedable is
-///     rejected at compile time under OpenMP (it remains usable in a serial
-///     build).
-///
-/// `rng` is left in a substantially different state than a purely sequential
-/// implementation would leave it, in *both* builds: this function draws from it
-/// to derive a base seed and then re-seeds it (and, for a counter-based engine,
-/// re-keys it per work item), so it is not merely advanced by the number of
-/// values consumed.  Callers who continue to draw from the same generator
-/// afterwards should not assume any particular number of values was consumed.
-///
-/// @param[in] bitstrings A container (e.g., `std::vector`) of bitstrings.
-/// @param[in] probabilities A 1D array specifying a probability distribution over
-///     the bitstrings.  Must contain the same number of elements as `bitstrings`.
-/// @param[in] avg_occupancies Size-2 `std::array` of `std::vector<double>`s holding the
-///     mean occupancy of the spin-up and spin-down orbitals, respectively.  Each
-///     vector's size must be half the size of a single bitstring.
-/// @param[in] num_elec Size-2 `std::array` containing the number of spin-up and
-///     spin-down electrons in the system, respectively.
-/// @param[in,out] rng Random number generator.
-///
-/// @tparam BitstringVectorType Type of `bitstrings`, compatible with
-///     `std::vector<boost::dynamic_bitset<>>`.
-/// @tparam WeightVectorType Type of `weights`, compatible with `std::vector<double>`.
-/// @tparam RNGType Type of random number generator.
-///
-/// @return A refined `std::vector` of unique bitstrings and a parallel, updated
-///     probability array.
 template <
-    typename BitstringVectorType, typename WeightVectorType,
+    std::size_t NumSpecies, typename BitstringVectorType, typename WeightVectorType,
     QKA_SQD_CONCEPT_RNG_(RNGType)
 >
-[[nodiscard]] std::pair<BitstringVectorType, WeightVectorType> recover_configurations(
+[[nodiscard]] std::pair<BitstringVectorType, WeightVectorType> _recover_configurations(
     const BitstringVectorType &bitstrings, const WeightVectorType &probabilities,
-    const std::array<std::vector<double>, 2> &avg_occupancies,
-    std::array<std::uint64_t, 2> num_elec, RNGType &rng
+    const std::array<std::vector<double>, NumSpecies> &avg_occupancies,
+    const std::array<std::uint64_t, NumSpecies> &num_elec, RNGType &rng
 )
 {
     if (bitstrings.size() != probabilities.size()) {
@@ -235,21 +204,25 @@ template <
     }
 
     const auto partition_size = avg_occupancies[0].size();
-    if (avg_occupancies[1].size() != partition_size) {
-        QKA_SQD_THROW_INVALID_ARGUMENT_(
-            "Average occupancies vectors must have matching number of alpha and beta "
-            "orbitals."
-        );
+    for (std::size_t s = 1; s < NumSpecies; ++s) {
+        if (avg_occupancies[s].size() != partition_size) {
+            QKA_SQD_THROW_INVALID_ARGUMENT_(
+                "Average occupancies vectors must have matching number of alpha and "
+                "beta orbitals."
+            );
+        }
     }
-    if (num_elec[0] > partition_size || num_elec[1] > partition_size) {
-        QKA_SQD_THROW_INVALID_ARGUMENT_(
-            "Desired Hamming weight cannot be larger than the number of orbitals."
-        );
+    for (std::size_t s = 0; s < NumSpecies; ++s) {
+        if (num_elec[s] > partition_size) {
+            QKA_SQD_THROW_INVALID_ARGUMENT_(
+                "Desired Hamming weight cannot be larger than the number of orbitals."
+            );
+        }
     }
 
     // Populate the probabilities table
-    std::array<std::array<std::vector<double>, 2>, 2> probs_table;
-    for (int s = 0; s < 2; ++s) {
+    std::array<std::array<std::vector<double>, 2>, NumSpecies> probs_table;
+    for (std::size_t s = 0; s < NumSpecies; ++s) {
         probs_table[s][0].resize(partition_size);
         probs_table[s][1].resize(partition_size);
         // NOLINTBEGIN(bugprone-narrowing-conversions)
@@ -274,19 +247,25 @@ template <
     // it needs is actually possible.  The latter is what
     // `NoReplacementSampler::operator()` would otherwise discover mid-loop.
     for (const auto &bitstring : bitstrings) {
-        if (bitstring.size() != 2 * partition_size) {
-            QKA_SQD_THROW_INVALID_ARGUMENT_(
-                "Bitstring length must be twice the number of orbitals."
-            );
+        if (bitstring.size() != NumSpecies * partition_size) {
+            if constexpr (NumSpecies == 1) {
+                QKA_SQD_THROW_INVALID_ARGUMENT_(
+                    "Bitstring length must equal the number of orbitals."
+                );
+            } else {
+                QKA_SQD_THROW_INVALID_ARGUMENT_(
+                    "Bitstring length must be twice the number of orbitals."
+                );
+            }
         }
 
-        // Can each spin sector reach its target Hamming weight?  Correction flips
+        // Can each partition reach its target Hamming weight?  Correction flips
         // `num_flip` bits chosen without replacement among the eligible bits --
         // those currently equal to `flip` -- weighted by `probs_table`.  A bit
         // whose weight is zero can never be chosen, so the requirement is that at
         // least `num_flip` eligible bits carry a nonzero weight.
         //
-        // This mirrors `_bipartite_bitstring_correcting` exactly, so it is a
+        // This mirrors `_bitstring_correcting` exactly, so it is a
         // prediction rather than an approximation: the quantities involved are
         // fixed by (bitstring, probs_table, num_elec) and no sampling is
         // involved.  Zero weights are ordinary in practice, not pathological --
@@ -298,14 +277,17 @@ template <
         // `NoReplacementSampler::operator()` raises when no nonzero weight
         // remains, and that would happen inside the correction loop, which may be
         // parallel.
-        const auto n_right_bits =
-            internal::mask_lower_n_bits(bitstring, partition_size).count();
-        const std::array<std::uint64_t, 2> hamming_weight{
-            static_cast<std::uint64_t>(n_right_bits),
-            static_cast<std::uint64_t>(bitstring.count() - n_right_bits)
-        };
+        std::array<std::uint64_t, NumSpecies> hamming_weight;
+        if constexpr (NumSpecies == 1) {
+            hamming_weight[0] = bitstring.count();
+        } else {
+            const auto n_right_bits =
+                mask_lower_n_bits(bitstring, partition_size).count();
+            hamming_weight[0] = n_right_bits;
+            hamming_weight[1] = bitstring.count() - n_right_bits;
+        }
         std::uint64_t offset = 0;
-        for (int s = 0; s < 2; ++s) {
+        for (std::size_t s = 0; s < NumSpecies; ++s) {
             if (hamming_weight[s] != num_elec[s]) {
                 const bool flip = bool(hamming_weight[s] > num_elec[s]);
                 const std::uint64_t num_flip = flip ? hamming_weight[s] - num_elec[s]
@@ -393,7 +375,7 @@ template <
                 internal::key_counter_based_rng(thread_rng, base_seed, i);
             }
             BitstringType corrected_bitstring = bitstrings[i];
-            internal::_bipartite_bitstring_correcting(
+            internal::_bitstring_correcting(
                 corrected_bitstring, probs_table, num_elec, scratch, thread_rng
             );
             corrected[i] = std::move(corrected_bitstring);
@@ -444,7 +426,7 @@ template <
             internal::key_counter_based_rng(rng, base_seed, i);
         }
         BitstringType corrected_bitstring = bitstrings[i];
-        internal::_bipartite_bitstring_correcting(
+        internal::_bitstring_correcting(
             corrected_bitstring, probs_table, num_elec, scratch, rng
         );
         corrected[i] = std::move(corrected_bitstring);
@@ -481,6 +463,104 @@ template <
     internal::_normalize(freqs_out);
 
     return {bitstrings_out, freqs_out};
+}
+
+} // namespace internal
+
+/// Refine bitstrings based on average orbital occupancy and a target
+/// Hamming weight.
+///
+/// When compiled with OpenMP enabled, the per-bitstring correction runs in
+/// parallel.  In that case `rng` is used to seed independent per-work-item
+/// random streams rather than being drawn from sequentially, so the numerical
+/// output differs from a purely sequential run.  The degree of reproducibility
+/// depends on the generator:
+///
+///   - A counter-based engine (one whose `set_counter` accepts its counter
+///     type, such as the C++26 `std::philox_engine`) is keyed by bitstring
+///     index, so the result -- including the order of the returned vectors --
+///     is identical for any number of threads.
+///   - Any other engine must be seedable (have `seed()`); each thread then uses
+///     an independently seeded copy.  Results are valid but depend on the
+///     thread count.  A generator that is neither counter-based nor seedable is
+///     rejected at compile time under OpenMP (it remains usable in a serial
+///     build).
+///
+/// `rng` is left in a substantially different state than a purely sequential
+/// implementation would leave it, in *both* builds: this function draws from it
+/// to derive a base seed and then re-seeds it (and, for a counter-based engine,
+/// re-keys it per work item), so it is not merely advanced by the number of
+/// values consumed.  Callers who continue to draw from the same generator
+/// afterwards should not assume any particular number of values was consumed.
+///
+/// @param[in] bitstrings A container (e.g., `std::vector`) of bitstrings.
+/// @param[in] probabilities A 1D array specifying a probability distribution over
+///     the bitstrings.  Must contain the same number of elements as `bitstrings`.
+/// @param[in] avg_occupancies Size-2 `std::array` of `std::vector<double>`s holding the
+///     mean occupancy of the spin-up and spin-down orbitals, respectively.  Each
+///     vector's size must be half the size of a single bitstring.
+/// @param[in] num_elec Size-2 `std::array` containing the number of spin-up and
+///     spin-down electrons in the system, respectively.
+/// @param[in,out] rng Random number generator.
+///
+/// @tparam BitstringVectorType Type of `bitstrings`, compatible with
+///     `std::vector<boost::dynamic_bitset<>>`.
+/// @tparam WeightVectorType Type of `weights`, compatible with `std::vector<double>`.
+/// @tparam RNGType Type of random number generator.
+///
+/// @return A refined `std::vector` of unique bitstrings and a parallel, updated
+///     probability array.
+template <
+    typename BitstringVectorType, typename WeightVectorType,
+    QKA_SQD_CONCEPT_RNG_(RNGType)
+>
+[[nodiscard]] std::pair<BitstringVectorType, WeightVectorType> recover_configurations(
+    const BitstringVectorType &bitstrings, const WeightVectorType &probabilities,
+    const std::array<std::vector<double>, 2> &avg_occupancies,
+    std::array<std::uint64_t, 2> num_elec, RNGType &rng
+)
+{
+    return internal::_recover_configurations<2, BitstringVectorType, WeightVectorType>(
+        bitstrings, probabilities, avg_occupancies, num_elec, rng
+    );
+}
+
+/// Refine bitstrings of a single species of particle (e.g., spinless fermions)
+/// based on average orbital occupancy and a target Hamming weight.
+///
+/// Unlike the overload above, which conserves the number of spin-up and
+/// spin-down electrons separately, this overload conserves only the total
+/// number of particles.  Its behavior under OpenMP is the same as that of the
+/// overload above.
+///
+/// @param[in] bitstrings A container (e.g., `std::vector`) of bitstrings.
+/// @param[in] probabilities A 1D array specifying a probability distribution over
+///     the bitstrings.  Must contain the same number of elements as `bitstrings`.
+/// @param[in] avg_occupancies The mean occupancy of each orbital.  Its size must
+///     equal the size of a single bitstring.
+/// @param[in] num_particles The number of particles in the system.
+/// @param[in,out] rng Random number generator.
+///
+/// @tparam BitstringVectorType Type of `bitstrings`, compatible with
+///     `std::vector<boost::dynamic_bitset<>>`.
+/// @tparam WeightVectorType Type of `weights`, compatible with `std::vector<double>`.
+/// @tparam RNGType Type of random number generator.
+///
+/// @return A refined `std::vector` of unique bitstrings and a parallel, updated
+///     probability array.
+template <
+    typename BitstringVectorType, typename WeightVectorType,
+    QKA_SQD_CONCEPT_RNG_(RNGType)
+>
+[[nodiscard]] std::pair<BitstringVectorType, WeightVectorType> recover_configurations(
+    const BitstringVectorType &bitstrings, const WeightVectorType &probabilities,
+    const std::vector<double> &avg_occupancies, std::uint64_t num_particles,
+    RNGType &rng
+)
+{
+    return internal::_recover_configurations<1, BitstringVectorType, WeightVectorType>(
+        bitstrings, probabilities, {avg_occupancies}, {num_particles}, rng
+    );
 }
 
 } // namespace sqd
