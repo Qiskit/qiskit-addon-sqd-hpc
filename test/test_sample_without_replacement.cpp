@@ -37,6 +37,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <random>
 #include <vector>
@@ -203,3 +204,141 @@ TEST_CASE("NoReplacementSampler never selects a zero-weight index")
         }
     }
 }
+
+// Every index the sampler returns must be a valid index into the weight array.
+// The Fenwick descent locates a leaf by comparing a uniform target against
+// cumulative node sums; if those sums are ever smaller than the target, every
+// step of the descent is taken and `pos` runs past the last leaf.
+//
+// That happens through floating-point cancellation.  A widely-spread weight
+// array rounds away the small weights when the node sums are accumulated
+// (1e-12 + 1e12 == 1e12), so once the dominant weight is drawn and subtracted,
+// the node sums and the running total collapse to exactly zero while a
+// genuinely nonzero weight remains.  The remaining-count guard still reports a
+// drawable index, the descent is entered with a zero total, and it walks off
+// the end.  Callers index straight into a parallel array with the result
+// (`indices[sampler(rng)]` in _bipartite_bitstring_correcting), so an
+// out-of-range return is an out-of-bounds read.
+TEST_CASE("NoReplacementSampler returns in-range indices for widely spread weights")
+{
+    const std::vector<std::vector<double>> weight_cases = {
+        {1e-12, 1e12}, {1e-20, 1.0}, {1e12, 1e-12}, {1e-8, 1e-8, 1e8}, {1.0, 1e16, 1.0},
+    };
+
+    for (const auto &weights : weight_cases) {
+        CAPTURE(weights.size());
+        // Draw the whole pool: the failure appears only after the dominant
+        // weight has been removed.
+        std::size_t drawable = 0;
+        for (const double w : weights) {
+            if (w > 0.0) {
+                ++drawable;
+            }
+        }
+
+        std::mt19937_64 rng(20250923);
+        NoReplacementSampler<std::vector<double>> sampler(weights);
+        for (std::size_t i = 0; i < drawable; ++i) {
+            const std::size_t idx = sampler(rng);
+            REQUIRE(idx < weights.size());
+            CHECK(weights[idx] > 0.0);
+        }
+    }
+}
+
+// Drawing the entire pool must yield each nonzero index exactly once, for any
+// weight distribution.  This is the same invariant as above stated over the
+// whole permutation rather than per draw, and it also catches a removed index
+// being handed out twice.
+TEST_CASE("NoReplacementSampler draws each nonzero index exactly once")
+{
+    const std::vector<std::vector<double>> weight_cases = {
+        {1.0, 2.0, 3.0},
+        {1e-12, 1e12},
+        {1e-8, 1e-8, 1e8},
+        {0.0, 1e-30, 1e30, 0.0},
+    };
+
+    for (const auto &weights : weight_cases) {
+        CAPTURE(weights.size());
+        std::vector<std::size_t> expected;
+        for (std::size_t i = 0; i < weights.size(); ++i) {
+            if (weights[i] > 0.0) {
+                expected.push_back(i);
+            }
+        }
+
+        std::mt19937_64 rng(0x0dd'ba11ULL);
+        NoReplacementSampler<std::vector<double>> sampler(weights);
+        std::vector<std::size_t> drawn;
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            const std::size_t idx = sampler(rng);
+            REQUIRE(idx < weights.size());
+            drawn.push_back(idx);
+        }
+        std::sort(drawn.begin(), drawn.end());
+        CHECK(drawn == expected);
+    }
+}
+// Gated on finite math: -ffinite-math-only makes `std::isinf` unusable, and the
+// precondition below depends on it.
+#if !QKA_SQD_FINITE_MATH_ONLY
+// Weights that are individually finite but whose *sum* overflows to infinity.
+// The previous `std::discrete_distribution` sampler could not draw from such a
+// vector at all: it normalizes by the sum, so an infinite sum made every
+// probability exactly zero, libstdc++ then returned the last index on every
+// draw, and the retry loop could not escape because its recovery was to rebuild
+// the distribution from the surviving weights, whose sum was still infinite.
+// The first draw returned and the second hung.
+//
+// The Fenwick tree never normalizes by the total, so it is not sensitive to the
+// sum overflowing: it compares a target against node sums and descends.  The
+// whole pool is drawable, which is what this case now asserts.
+//
+// No caller in the library can reach this.  `recover_configurations` is the only
+// one, and `_p_flip_*` returns values in [0, 1], so its sums are bounded by the
+// orbital count -- 2048 orbitals give a worst case of 2048, some 8.8e304 below
+// DBL_MAX.  The case is kept because it is the extreme of the cancellation
+// behavior the sampler has to tolerate, and it is cheap to hold onto.
+TEST_CASE("NoReplacementSampler draws from weights whose sum overflows")
+{
+    constexpr double huge = std::numeric_limits<double>::max() / 4.0;
+    // Six copies of DBL_MAX/4 sum to 1.5*DBL_MAX, i.e. +inf, while every
+    // individual element is finite and so passes the per-element checks.
+    const std::vector<double> weights{1.0,  huge, huge, 0.0, huge,
+                                      0.01, huge, huge, huge};
+
+    double naive_sum = 0.0;
+    for (const double w : weights) {
+        naive_sum += w;
+    }
+    REQUIRE(std::isinf(naive_sum)); // the precondition this case is about
+
+    NoReplacementSampler<std::vector<double>> sampler(weights);
+    CHECK(sampler.get_remaining_nonzero_weights() == 8);
+
+    // All 8 nonzero indices come out, each exactly once and in range.  Under the
+    // old sampler the second of these draws would not have returned.
+    std::mt19937_64 rng(7);
+    std::vector<std::size_t> drawn;
+    for (int i = 0; i < 8; ++i) {
+        const std::size_t idx = sampler(rng);
+        REQUIRE(idx < weights.size());
+        CHECK(weights[idx] > 0.0);
+        drawn.push_back(idx);
+    }
+    std::sort(drawn.begin(), drawn.end());
+    const std::vector<std::size_t> expected{0, 1, 2, 4, 5, 6, 7, 8};
+    CHECK(drawn == expected);
+    CHECK(sampler.get_remaining_nonzero_weights() == 0);
+
+    // A large-but-finite sum of the same shape is supported as well, which is
+    // what distinguishes overflow from merely large weights.
+    const std::vector<double> ok{huge, huge, 1.0};
+    NoReplacementSampler<std::vector<double>> finite_sampler(ok);
+    CHECK(finite_sampler.get_remaining_nonzero_weights() == 3);
+    for (int i = 0; i < 3; ++i) {
+        CHECK(finite_sampler(rng) < ok.size());
+    }
+}
+#endif // !QKA_SQD_FINITE_MATH_ONLY
