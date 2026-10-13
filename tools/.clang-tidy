@@ -1,0 +1,8 @@
+---
+# Inherit the root configuration and disable a check that is inapplicable to the
+# tools:
+#   - bugprone-random-generator-seed: the reproducibility dump deliberately uses
+#     a constant seed, since comparing two builds at the same starting state is
+#     the entire point of the tool.
+InheritParentConfig: true
+Checks: '-bugprone-random-generator-seed'

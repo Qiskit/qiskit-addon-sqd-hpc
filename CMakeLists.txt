@@ -81,10 +81,26 @@ endif()
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(sqd_tests)
 
+# Dumps recover_configurations output for a fixed seed.  Built twice -- with and
+# without OpenMP -- and diffed, to check that a counter-based RNG gives the same
+# answer either way; see the comment at the top of the source file.
+add_executable(sqd_rng_reproducibility_dump
+    tools/rng_reproducibility_dump.cpp
+)
+target_link_libraries(sqd_rng_reproducibility_dump
+    PRIVATE
+    boost_dynamic_bitset
+    bitset2
+)
+if(SQD_ENABLE_OPENMP)
+    target_link_libraries(sqd_rng_reproducibility_dump PRIVATE OpenMP::OpenMP_CXX)
+endif()
+
 add_executable(sqd_benchmarks
     benchmark/benchmark_main.cpp
     benchmark/benchmark_subsampling.cpp
     benchmark/benchmark_configuration_recovery.cpp
+    benchmark/benchmark_sample_without_replacement.cpp
 )
 target_include_directories(sqd_benchmarks PRIVATE deps/nanobench/src/include)
 target_link_libraries(sqd_benchmarks

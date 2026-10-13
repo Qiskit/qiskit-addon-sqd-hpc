@@ -20,6 +20,7 @@ Table of Contents
 
    Documentation Home <self>
    Compilation flags <compilation-flags>
+   Random number generation <random-number-generation>
    API Reference <apidocs/index>
    GitHub <https://github.com/Qiskit/qiskit-addon-sqd-hpc>
    Release Notes <release-notes>

@@ -14,10 +14,12 @@
 
 extern void benchmark_subsampling(ankerl::nanobench::Bench &bench);
 extern void benchmark_configuration_recovery(ankerl::nanobench::Bench &bench);
+extern void benchmark_sample_without_replacement(ankerl::nanobench::Bench &bench);
 
 int main()
 {
     ankerl::nanobench::Bench bench;
     benchmark_subsampling(bench);
     benchmark_configuration_recovery(bench);
+    benchmark_sample_without_replacement(bench);
 }
