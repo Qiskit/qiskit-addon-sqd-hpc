@@ -187,51 +187,6 @@ void _bitstring_correcting(
     );
 }
 
-} // namespace internal
-
-/// Refine bitstrings based on average orbital occupancy and a target
-/// Hamming weight.
-///
-/// When compiled with OpenMP enabled, the per-bitstring correction runs in
-/// parallel.  In that case `rng` is used to seed independent per-work-item
-/// random streams rather than being drawn from sequentially, so the numerical
-/// output differs from a purely sequential run.  The degree of reproducibility
-/// depends on the generator:
-///
-///   - A counter-based engine (one whose `set_counter` accepts its counter
-///     type, such as the C++26 `std::philox_engine`) is keyed by bitstring
-///     index, so the result -- including the order of the returned vectors --
-///     is identical for any number of threads.
-///   - Any other engine must be seedable (have `seed()`); each thread then uses
-///     an independently seeded copy.  Results are valid but depend on the
-///     thread count.  A generator that is neither counter-based nor seedable is
-///     rejected at compile time under OpenMP (it remains usable in a serial
-///     build).
-///
-/// `rng` is left in a substantially different state than a purely sequential
-/// implementation would leave it, in *both* builds: this function draws from it
-/// to derive a base seed and then re-seeds it (and, for a counter-based engine,
-/// re-keys it per work item), so it is not merely advanced by the number of
-/// values consumed.  Callers who continue to draw from the same generator
-/// afterwards should not assume any particular number of values was consumed.
-///
-/// @param[in] bitstrings A container (e.g., `std::vector`) of bitstrings.
-/// @param[in] probabilities A 1D array specifying a probability distribution over
-///     the bitstrings.  Must contain the same number of elements as `bitstrings`.
-/// @param[in] avg_occupancies Size-2 `std::array` of `std::vector<double>`s holding the
-///     mean occupancy of the spin-up and spin-down orbitals, respectively.  Each
-///     vector's size must be half the size of a single bitstring.
-/// @param[in] num_elec Size-2 `std::array` containing the number of spin-up and
-///     spin-down electrons in the system, respectively.
-/// @param[in,out] rng Random number generator.
-///
-/// @tparam BitstringVectorType Type of `bitstrings`, compatible with
-///     `std::vector<boost::dynamic_bitset<>>`.
-/// @tparam WeightVectorType Type of `weights`, compatible with `std::vector<double>`.
-/// @tparam RNGType Type of random number generator.
-///
-/// @return A refined `std::vector` of unique bitstrings and a parallel, updated
-///     probability array.
 template <
     std::size_t NumSpecies, typename BitstringVectorType, typename WeightVectorType,
     QKA_SQD_CONCEPT_RNG_(RNGType)
@@ -304,13 +259,13 @@ template <
             }
         }
 
-        // Can each spin sector reach its target Hamming weight?  Correction flips
+        // Can each partition reach its target Hamming weight?  Correction flips
         // `num_flip` bits chosen without replacement among the eligible bits --
         // those currently equal to `flip` -- weighted by `probs_table`.  A bit
         // whose weight is zero can never be chosen, so the requirement is that at
         // least `num_flip` eligible bits carry a nonzero weight.
         //
-        // This mirrors `_bipartite_bitstring_correcting` exactly, so it is a
+        // This mirrors `_bitstring_correcting` exactly, so it is a
         // prediction rather than an approximation: the quantities involved are
         // fixed by (bitstring, probs_table, num_elec) and no sampling is
         // involved.  Zero weights are ordinary in practice, not pathological --
@@ -322,14 +277,17 @@ template <
         // `NoReplacementSampler::operator()` raises when no nonzero weight
         // remains, and that would happen inside the correction loop, which may be
         // parallel.
-        const auto n_right_bits =
-            internal::mask_lower_n_bits(bitstring, partition_size).count();
-        const std::array<std::uint64_t, 2> hamming_weight{
-            static_cast<std::uint64_t>(n_right_bits),
-            static_cast<std::uint64_t>(bitstring.count() - n_right_bits)
-        };
+        std::array<std::uint64_t, NumSpecies> hamming_weight;
+        if constexpr (NumSpecies == 1) {
+            hamming_weight[0] = bitstring.count();
+        } else {
+            const auto n_right_bits =
+                mask_lower_n_bits(bitstring, partition_size).count();
+            hamming_weight[0] = n_right_bits;
+            hamming_weight[1] = bitstring.count() - n_right_bits;
+        }
         std::uint64_t offset = 0;
-        for (int s = 0; s < 2; ++s) {
+        for (std::size_t s = 0; s < NumSpecies; ++s) {
             if (hamming_weight[s] != num_elec[s]) {
                 const bool flip = bool(hamming_weight[s] > num_elec[s]);
                 const std::uint64_t num_flip = flip ? hamming_weight[s] - num_elec[s]
@@ -518,15 +476,22 @@ template <
 /// output differs from a purely sequential run.  The degree of reproducibility
 /// depends on the generator:
 ///
-///   - A counter-based engine (one with `set_counter`, such as the C++26
-///     `std::philox_engine`) is keyed by bitstring index, so the result --
-///     including the order of the returned vectors -- is identical for any
-///     number of threads.
+///   - A counter-based engine (one whose `set_counter` accepts its counter
+///     type, such as the C++26 `std::philox_engine`) is keyed by bitstring
+///     index, so the result -- including the order of the returned vectors --
+///     is identical for any number of threads.
 ///   - Any other engine must be seedable (have `seed()`); each thread then uses
 ///     an independently seeded copy.  Results are valid but depend on the
 ///     thread count.  A generator that is neither counter-based nor seedable is
 ///     rejected at compile time under OpenMP (it remains usable in a serial
 ///     build).
+///
+/// `rng` is left in a substantially different state than a purely sequential
+/// implementation would leave it, in *both* builds: this function draws from it
+/// to derive a base seed and then re-seeds it (and, for a counter-based engine,
+/// re-keys it per work item), so it is not merely advanced by the number of
+/// values consumed.  Callers who continue to draw from the same generator
+/// afterwards should not assume any particular number of values was consumed.
 ///
 /// @param[in] bitstrings A container (e.g., `std::vector`) of bitstrings.
 /// @param[in] probabilities A 1D array specifying a probability distribution over
